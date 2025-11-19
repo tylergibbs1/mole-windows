@@ -285,7 +285,7 @@ remove_mole() {
 
     # Find mole installations using which/command
     local found_mole
-    found_mole=$(command -v mole 2>/dev/null || true)
+    found_mole=$(command -v mole 2> /dev/null || true)
     if [[ -n "$found_mole" && -f "$found_mole" ]]; then
         # Check if it's not a Homebrew symlink
         if [[ ! -L "$found_mole" ]] || ! readlink "$found_mole" | grep -q "Cellar/mole"; then
@@ -311,7 +311,7 @@ remove_mole() {
 
     # Find mo alias
     local found_mo
-    found_mo=$(command -v mo 2>/dev/null || true)
+    found_mo=$(command -v mo 2> /dev/null || true)
     if [[ -n "$found_mo" && -f "$found_mo" ]]; then
         alias_installs+=("$found_mo")
     fi
