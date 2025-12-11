@@ -539,7 +539,7 @@ func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus) cardData {
 		if b.CycleCount > 0 {
 			healthParts = append(healthParts, fmt.Sprintf("%d cycles", b.CycleCount))
 		}
-		
+
 		// Add temperature if available
 		if thermal.CPUTemp > 0 {
 			tempStyle := subtleStyle
@@ -550,12 +550,12 @@ func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus) cardData {
 			}
 			healthParts = append(healthParts, tempStyle.Render(fmt.Sprintf("%.0f°C", thermal.CPUTemp)))
 		}
-		
+
 		// Add fan speed if available
 		if thermal.FanSpeed > 0 {
 			healthParts = append(healthParts, fmt.Sprintf("%d RPM", thermal.FanSpeed))
 		}
-		
+
 		if len(healthParts) > 0 {
 			lines = append(lines, subtleStyle.Render(strings.Join(healthParts, " · ")))
 		}
