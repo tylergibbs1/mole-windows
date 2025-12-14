@@ -49,3 +49,10 @@ cmd/status/status
 /status
 mole-analyze
 # Note: bin/analyze-go and bin/status-go are released binaries and should be tracked
+
+# Swift / Xcode
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
