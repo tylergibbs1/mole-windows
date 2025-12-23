@@ -413,11 +413,11 @@ clean_project_artifacts() {
     # shellcheck disable=SC2329
     cleanup_scan() {
         # Kill all background scans
-        for pid in "${scan_pids[@]}"; do
+        for pid in "${scan_pids[@]+"${scan_pids[@]}"}"; do
             kill "$pid" 2> /dev/null || true
         done
         # Clean up temp files
-        for temp in "${scan_temps[@]}"; do
+        for temp in "${scan_temps[@]+"${scan_temps[@]}"}"; do
             rm -f "$temp" 2> /dev/null || true
         done
         if [[ -t 1 ]]; then
@@ -450,7 +450,7 @@ clean_project_artifacts() {
     done
 
     # Wait for all scans to complete
-    for pid in "${scan_pids[@]}"; do
+    for pid in "${scan_pids[@]+"${scan_pids[@]}"}"; do
         wait "$pid" 2> /dev/null || true
     done
 
@@ -459,7 +459,7 @@ clean_project_artifacts() {
     fi
 
     # Collect all results
-    for scan_output in "${scan_temps[@]}"; do
+    for scan_output in "${scan_temps[@]+"${scan_temps[@]}"}"; do
         if [[ -f "$scan_output" ]]; then
             while IFS= read -r item; do
                 if [[ -n "$item" ]]; then
@@ -564,7 +564,7 @@ clean_project_artifacts() {
 
         # Check if recent
         local is_recent=false
-        for recent_item in "${recently_modified[@]}"; do
+        for recent_item in "${recently_modified[@]+"${recently_modified[@]}"}"; do
             if [[ "$item" == "$recent_item" ]]; then
                 is_recent=true
                 break
