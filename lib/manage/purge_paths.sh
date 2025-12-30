@@ -92,7 +92,7 @@ manage_purge_paths() {
     echo ""
 
     # Open in editor
-    local editor="${EDITOR:-${VISUAL:-nano}}"
+    local editor="${EDITOR:-${VISUAL:-vim}}"
     echo -e "Opening in ${CYAN}$editor${NC}..."
     echo -e "${GRAY}Save and exit to apply changes. Leave empty to use defaults.${NC}"
     echo ""
