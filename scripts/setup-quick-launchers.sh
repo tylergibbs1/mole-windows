@@ -19,6 +19,15 @@ log_success() { echo -e "${GREEN}${ICON_SUCCESS}${NC} $1"; }
 log_warn() { echo -e "${YELLOW}${ICON_WARN}${NC} $1"; }
 log_error() { echo -e "${RED}${ICON_ERR}${NC} $1"; }
 log_header() { echo -e "\n${BLUE}==== $1 ====${NC}\n"; }
+is_interactive() { [[ -t 1 && -r /dev/tty ]]; }
+prompt_enter() {
+    local prompt="$1"
+    if is_interactive; then
+        read -r -p "$prompt" </dev/tty || true
+    else
+        echo "$prompt"
+    fi
+}
 
 detect_mo() {
     if command -v mo > /dev/null 2>&1; then
@@ -272,12 +281,16 @@ create_raycast_commands() {
         echo ""
         echo "Path copied to your clipboard: $dir"
 
-        read -r -p "Press [Enter] once you have added this folder..."
+        prompt_enter "Press [Enter] once you have added this folder..."
     done
 
     log_header "Finalizing Setup"
-    read -r -p "In Raycast we need to reload the script directories to sync your new commands. Press [Enter] to reload..."
-    open "raycast://extensions/raycast/raycast/reload-script-directories"
+    prompt_enter "In Raycast we need to reload the script directories to sync your new commands. Press [Enter] to reload..."
+    if open "raycast://extensions/raycast/raycast/reload-script-directories" > /dev/null 2>&1; then
+        log_step "Raycast script directories reloaded."
+    else
+        log_warn "Could not auto-reload Raycast script directories."
+    fi
 
     log_success "Raycast setup complete!"
 }
