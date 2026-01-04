@@ -49,6 +49,7 @@ mo optimize                  # Refresh caches & services
 mo analyze                   # Visual disk explorer
 mo status                    # Live system health dashboard
 mo purge                     # Clean project build artifacts
+mo installers                # Find and remove installer files
 
 mo touchid                   # Configure Touch ID for sudo
 mo completion                # Setup shell tab completion
