@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Mole - 95.50GB freed" width="800" />
+  <img src="https://cdn.tw93.fun/img/mole.jpeg" alt="Mole - 95.50GB freed" width="1000" />
 </p>
 
 ## Features
@@ -257,15 +257,11 @@ Adds 5 commands: `clean`, `uninstall`, `optimize`, `analyze`, `status`. Mole aut
 
 Mole's development can not be without these Hackers. They contributed a lot of capabilities for Mole. Also, welcome to follow them! ❤️
 
-<a href="https://github.com/tw93/mole/graphs/contributors">
-  <img src="https://raw.githubusercontent.com/tw93/mole/main/CONTRIBUTORS.svg?sanitize=true" alt="Contributors" width="1000" />
-</a>
+<img src="https://raw.githubusercontent.com/tw93/mole/main/CONTRIBUTORS.svg?sanitize=true" alt="Contributors" width="1000" />
 
 Users from around the world are loving Mole! Join the community and share your experience.
 
-<p align="center">
-  <img src="https://cdn.tw93.fun/pic/lovemole.jpeg" alt="Community feedback on Mole" width="800" />
-</p>
+<img src="https://cdn.tw93.fun/pic/lovemole.jpeg" alt="Community feedback on Mole" width="1000" />
 
 ## Support
 
@@ -276,7 +272,7 @@ Users from around the world are loving Mole! Join the community and share your e
 <details>
 <summary><strong>These friends sent me a lot of Coke</strong></summary>
 <br/>
-<a href="https://miaoyan.app/cats.html?name=Mole"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000px" /></a>
+<a href="https://miaoyan.app/cats.html?name=Mole"><img src="https://miaoyan.app/assets/sponsors.svg" width="1000" /></a>
 </details>
 
 ## License
