@@ -308,9 +308,10 @@ func renderMemoryCard(mem MemoryStatus) cardData {
 	if mem.Pressure != "" {
 		pressureStyle := okStyle
 		pressureText := "Status " + mem.Pressure
-		if mem.Pressure == "warn" {
+		switch mem.Pressure {
+		case "warn":
 			pressureStyle = warnStyle
-		} else if mem.Pressure == "critical" {
+		case "critical":
 			pressureStyle = dangerStyle
 		}
 		lines = append(lines, pressureStyle.Render(pressureText))

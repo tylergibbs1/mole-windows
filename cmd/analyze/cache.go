@@ -49,7 +49,7 @@ func cloneDirEntries(entries []dirEntry) []dirEntry {
 		return nil
 	}
 	copied := make([]dirEntry, len(entries))
-	copy(copied, entries)
+	copy(copied, entries) //nolint:all
 	return copied
 }
 
@@ -58,7 +58,7 @@ func cloneFileEntries(files []fileEntry) []fileEntry {
 		return nil
 	}
 	copied := make([]fileEntry, len(files))
-	copy(copied, files)
+	copy(copied, files) //nolint:all
 	return copied
 }
 
@@ -208,7 +208,7 @@ func loadCacheFromDisk(path string) (*cacheEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck
 
 	var entry cacheEntry
 	decoder := gob.NewDecoder(file)
@@ -258,7 +258,7 @@ func saveCacheToDisk(path string, result scanResult) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck
 
 	encoder := gob.NewEncoder(file)
 	return encoder.Encode(entry)

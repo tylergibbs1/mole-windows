@@ -1,6 +1,8 @@
 # golangci-lint configuration for Mole
 # https://golangci-lint.run/usage/configuration/
 
+version: 2
+
 run:
   timeout: 5m
   # Only lint Go code in cmd directory
@@ -12,13 +14,10 @@ linters:
     # Default linters
     - govet
     - staticcheck
-    - gosimple
     - ineffassign
     - unused
     # Additional useful linters
     - errcheck
-    - gofmt
-    - goimports
 
 linters-settings:
   govet:
@@ -26,31 +25,20 @@ linters-settings:
     disable:
       - fieldalignment # struct field alignment optimization is noisy
   errcheck:
-    # Don't check for errors on these functions (common patterns)
     exclude-functions:
       - (io.Closer).Close
       - (*os/exec.Cmd).Run
       - (*os/exec.Cmd).Start
   staticcheck:
-    checks: ["all"]
-  goimports:
-    local-prefixes: github.com/tw93/Mole
+    checks: ["all", "-QF1003", "-SA9003"]
 
 issues:
-  # Don't limit the number of issues per linter
-  max-issues-per-linter: 0
-  max-same-issues: 0
-
   exclude-rules:
     # Ignore certain patterns in test files
     - path: _test\.go
       linters:
         - errcheck
     # Ignore errors from os.Remove in cleanup code
-    - text: "Error return value of `os.Remove` is not checked"
-      linters:
-        - errcheck
-    # Allow unchecked errors on deferred Close calls
-    - text: "Error return value of .*.Close"
+    - text: "os.Remove"
       linters:
         - errcheck

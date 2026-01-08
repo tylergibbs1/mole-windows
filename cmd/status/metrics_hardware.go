@@ -130,6 +130,8 @@ func parseInt(s string) int {
 		return 0
 	}
 	var num int
-	fmt.Sscanf(cleaned, "%d", &num)
+	if _, err := fmt.Sscanf(cleaned, "%d", &num); err != nil {
+		return 0
+	}
 	return num
 }
