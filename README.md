@@ -72,6 +72,7 @@ mo purge --paths             # Configure project scan directories
 
 - **Terminal**: iTerm2 has known compatibility issues; we recommend Alacritty, kitty, WezTerm, Ghostty, or Warp.
 - **Safety**: Built with strict protections. See [Security Audit](SECURITY_AUDIT.md). Preview changes with `mo clean --dry-run`.
+- **Be Careful**: Although safe by design, file deletion is permanent. Please review operations carefully.
 - **Debug Mode**: Use `--debug` for detailed logs (e.g., `mo clean --debug`). Combine with `--dry-run` for comprehensive preview including risk levels and file details.
 - **Navigation**: Supports arrow keys and Vim bindings (`h/j/k/l`).
 - **Status Shortcuts**: In `mo status`, press `k` to toggle cat visibility and save preference, `q` to quit.
