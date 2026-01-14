@@ -33,7 +33,7 @@ Before any operation:
 - Check protection logic before cleanup operations
 - Test with dry-run modes first
 - Validate syntax before suggesting changes: `bash -n <file>`
-- Use `gh` CLI for all GitHub operations (issues, PRs, releases, etc.)
+- **Prioritize `gh` CLI for ALL GitHub operations** - Always use `gh` to fetch and manipulate GitHub data (issues, PRs, releases, comments, etc.) instead of raw git commands or web scraping
 - Never commit code unless explicitly requested by user
 - Review and update `SECURITY_AUDIT.md` when modifying `clean` or `optimize` logic
 
@@ -290,7 +290,9 @@ mole/                      # Main CLI entrypoint (menu + routing)
 
 ## GitHub Operations
 
-### Use gh CLI for All GitHub Work
+### ⚡ ALWAYS Use gh CLI for GitHub Information
+
+**Golden Rule**: Whenever you need to fetch or manipulate GitHub data (issues, PRs, commits, releases, comments, etc.), **ALWAYS use `gh` CLI first**. It's more reliable, authenticated, and provides structured output compared to web scraping or raw git commands.
 
 **Preferred Commands**:
 

@@ -24,10 +24,6 @@
 - **Disk insights**: Visualizes usage, manages large files, **rebuilds caches**, and refreshes system services
 - **Live monitoring**: Real-time stats for CPU, GPU, memory, disk, and network to **diagnose performance issues**
 
-## Platform Support
-
-Mole is designed for **macOS**. For Windows users, please visit the [windows branch](https://github.com/tw93/Mole/tree/windows) for the native Windows version.
-
 ## Quick Start
 
 **Install via Homebrew — recommended:**
@@ -42,6 +38,8 @@ brew install mole
 # Optional args: -s latest for main branch code, -s 1.17.0 for specific version
 curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
 ```
+
+**Windows:** Mole is designed for macOS, but we offer an experimental Windows version based on user demand. See the [windows branch](https://github.com/tw93/Mole/tree/windows) — for early adopters only.
 
 **Run:**
 
