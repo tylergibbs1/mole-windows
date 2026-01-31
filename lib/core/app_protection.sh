@@ -681,6 +681,9 @@ should_protect_data() {
         com.nssurge.* | com.v2ray.* | ClashX* | Surge* | Shadowrocket* | Quantumult*)
             return 0
             ;;
+        *clash* | *Clash*)
+            return 0
+            ;;
         com.docker.* | com.getpostman.* | com.insomnia.*)
             return 0
             ;;
