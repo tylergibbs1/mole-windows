@@ -86,7 +86,7 @@ func (m model) View() string {
 			if m.scanning && percent >= 100 {
 				percent = 99
 			}
-			progressPrefix = fmt.Sprintf(" %s(%.0f%%)%s", colorCyan, percent, colorReset)
+			progressPrefix = fmt.Sprintf(" %s%.0f%%%s", colorCyan, percent, colorReset)
 		}
 
 		fmt.Fprintf(&b, "%s%s%s%s Scanning%s: %s%s files%s, %s%s dirs%s, %s%s%s\n",
@@ -112,7 +112,7 @@ func (m model) View() string {
 
 	if m.showLargeFiles {
 		if len(m.largeFiles) == 0 {
-			fmt.Fprintln(&b, "  No large files found (>=100MB)")
+			fmt.Fprintln(&b, "  No large files found")
 		} else {
 			viewport := calculateViewport(m.height, true)
 			start := max(m.largeOffset, 0)
@@ -342,7 +342,7 @@ func (m model) View() string {
 	} else if m.showLargeFiles {
 		selectCount := len(m.largeMultiSelected)
 		if selectCount > 0 {
-			fmt.Fprintf(&b, "%s↑↓← | Space Select | R Refresh | O Open | F File | ⌫ Del(%d) | ← Back | Q Quit%s\n", colorGray, selectCount, colorReset)
+			fmt.Fprintf(&b, "%s↑↓← | Space Select | R Refresh | O Open | F File | ⌫ Del %d | ← Back | Q Quit%s\n", colorGray, selectCount, colorReset)
 		} else {
 			fmt.Fprintf(&b, "%s↑↓← | Space Select | R Refresh | O Open | F File | ⌫ Del | ← Back | Q Quit%s\n", colorGray, colorReset)
 		}
@@ -351,13 +351,13 @@ func (m model) View() string {
 		selectCount := len(m.multiSelected)
 		if selectCount > 0 {
 			if largeFileCount > 0 {
-				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del(%d) | T Top(%d) | Q Quit%s\n", colorGray, selectCount, largeFileCount, colorReset)
+				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del %d | T Top %d | Q Quit%s\n", colorGray, selectCount, largeFileCount, colorReset)
 			} else {
-				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del(%d) | Q Quit%s\n", colorGray, selectCount, colorReset)
+				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del %d | Q Quit%s\n", colorGray, selectCount, colorReset)
 			}
 		} else {
 			if largeFileCount > 0 {
-				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del | T Top(%d) | Q Quit%s\n", colorGray, largeFileCount, colorReset)
+				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del | T Top %d | Q Quit%s\n", colorGray, largeFileCount, colorReset)
 			} else {
 				fmt.Fprintf(&b, "%s↑↓←→ | Space Select | Enter | R Refresh | O Open | F File | ⌫ Del | Q Quit%s\n", colorGray, colorReset)
 			}
@@ -390,12 +390,12 @@ func (m model) View() string {
 		}
 
 		if deleteCount > 1 {
-			fmt.Fprintf(&b, "%sDelete:%s %d items (%s)  %sPress Enter to confirm  |  ESC cancel%s\n",
+			fmt.Fprintf(&b, "%sDelete:%s %d items, %s  %sPress Enter to confirm  |  ESC cancel%s\n",
 				colorRed, colorReset,
 				deleteCount, humanizeBytes(totalDeleteSize),
 				colorGray, colorReset)
 		} else {
-			fmt.Fprintf(&b, "%sDelete:%s %s (%s)  %sPress Enter to confirm  |  ESC cancel%s\n",
+			fmt.Fprintf(&b, "%sDelete:%s %s, %s  %sPress Enter to confirm  |  ESC cancel%s\n",
 				colorRed, colorReset,
 				m.deleteTarget.Name, humanizeBytes(m.deleteTarget.Size),
 				colorGray, colorReset)

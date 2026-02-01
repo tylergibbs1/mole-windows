@@ -148,7 +148,7 @@ CloudKit cache|$HOME/Library/Caches/CloudKit/*|system_cache
 Trash|$HOME/.Trash|system_cache
 EOF
     # Add FINDER_METADATA with constant reference
-    echo "Finder metadata (.DS_Store)|$FINDER_METADATA_SENTINEL|system_cache"
+    echo "Finder metadata, .DS_Store|$FINDER_METADATA_SENTINEL|system_cache"
 }
 
 # Get all optimize items with their patterns
@@ -284,13 +284,13 @@ manage_whitelist_categories() {
         items_source=$(get_optimize_whitelist_items)
         active_config_file="$WHITELIST_CONFIG_OPTIMIZE"
         local display_config="${active_config_file/#$HOME/~}"
-        menu_title="Whitelist Manager – Select system checks to ignore
+        menu_title="Whitelist Manager, Select system checks to ignore
 ${GRAY}Edit: ${display_config}${NC}"
     else
         items_source=$(get_all_cache_items)
         active_config_file="$WHITELIST_CONFIG_CLEAN"
         local display_config="${active_config_file/#$HOME/~}"
-        menu_title="Whitelist Manager – Select caches to protect
+        menu_title="Whitelist Manager, Select caches to protect
 ${GRAY}Edit: ${display_config}${NC}"
     fi
 
@@ -416,7 +416,7 @@ ${GRAY}Edit: ${display_config}${NC}"
     if [[ ${#custom_patterns[@]} -gt 0 ]]; then
         summary_lines+=("Protected ${#selected_patterns[@]} predefined + ${#custom_patterns[@]} custom patterns")
     else
-        summary_lines+=("Protected ${total_protected} cache(s)")
+        summary_lines+=("Protected ${total_protected} caches")
     fi
     local display_config="${active_config_file/#$HOME/~}"
     summary_lines+=("Config: ${GRAY}${display_config}${NC}")

@@ -392,7 +392,7 @@ ${command}
 </dict>
 </plist>
 EOF
-        log_success "Workflow ready: ${name} (keyword: ${keyword})"
+        log_success "Workflow ready: ${name}, keyword: ${keyword}"
     done
 
     log_step "Open Alfred preferences → Workflows if you need to adjust keywords."
@@ -413,11 +413,11 @@ main() {
 
     echo ""
     log_success "Done! Raycast and Alfred are ready with 5 commands:"
-    echo "  • clean - Deep system cleanup"
-    echo "  • uninstall - Remove applications"
-    echo "  • optimize - System health & tuning"
-    echo "  • analyze - Disk space explorer"
-    echo "  • status - Live system monitor"
+    echo "  • clean, Deep system cleanup"
+    echo "  • uninstall, Remove applications"
+    echo "  • optimize, System health & tuning"
+    echo "  • analyze, Disk space explorer"
+    echo "  • status, Live system monitor"
     echo ""
 }
 

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/mem"
+	"github.com/shirou/gopsutil/v4/mem"
 )
 
 func collectMemory() (MemoryStatus, error) {

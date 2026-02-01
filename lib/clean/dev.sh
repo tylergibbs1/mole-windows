@@ -45,7 +45,7 @@ clean_dev_npm() {
 # Python/pip ecosystem caches.
 clean_dev_python() {
     if command -v pip3 > /dev/null 2>&1; then
-        clean_tool_cache "pip cache" bash -c 'pip3 cache purge >/dev/null 2>&1 || true'
+        clean_tool_cache "pip cache" bash -c 'pip3 cache purge > /dev/null 2>&1 || true'
         note_activity
     fi
     safe_clean ~/.pyenv/cache/* "pyenv cache"
@@ -65,7 +65,7 @@ clean_dev_python() {
 # Go build/module caches.
 clean_dev_go() {
     if command -v go > /dev/null 2>&1; then
-        clean_tool_cache "Go cache" bash -c 'go clean -modcache >/dev/null 2>&1 || true; go clean -cache >/dev/null 2>&1 || true'
+        clean_tool_cache "Go cache" bash -c 'go clean -modcache > /dev/null 2>&1 || true; go clean -cache > /dev/null 2>&1 || true'
         note_activity
     fi
 }
@@ -77,12 +77,12 @@ clean_dev_rust() {
 }
 
 # Helper: Check for multiple versions in a directory.
-# Args: $1=directory, $2=tool_name, $3+=additional_lines
+# Args: $1=directory, $2=tool_name, $3=list_command, $4=remove_command
 check_multiple_versions() {
     local dir="$1"
     local tool_name="$2"
-    shift 2
-    local -a additional_lines=("$@")
+    local list_cmd="${3:-}"
+    local remove_cmd="${4:-}"
 
     if [[ ! -d "$dir" ]]; then
         return 0
@@ -93,10 +93,11 @@ check_multiple_versions() {
 
     if [[ "$count" -gt 1 ]]; then
         note_activity
-        echo -e "  Found ${GREEN}${count}${NC} ${tool_name}"
-        for line in "${additional_lines[@]}"; do
-            echo -e "  $line"
-        done
+        local hint=""
+        if [[ -n "$list_cmd" ]]; then
+            hint=" · ${GRAY}${list_cmd}${NC}"
+        fi
+        echo -e "  ${GREEN}${ICON_SUCCESS}${NC} ${tool_name}: ${count} found${hint}"
     fi
 }
 
@@ -107,8 +108,7 @@ check_rust_toolchains() {
     check_multiple_versions \
         "$HOME/.rustup/toolchains" \
         "Rust toolchains" \
-        "You can list them with: ${GRAY}rustup toolchain list${NC}" \
-        "Remove unused with: ${GRAY}rustup toolchain uninstall <name>${NC}"
+        "rustup toolchain list"
 }
 # Docker caches (guarded by daemon check).
 clean_dev_docker() {
@@ -170,8 +170,7 @@ check_android_ndk() {
     check_multiple_versions \
         "$HOME/Library/Android/sdk/ndk" \
         "Android NDK versions" \
-        "Manage in: ${GRAY}Android Studio → SDK Manager${NC}" \
-        "Or manually at: ${GRAY}\$HOME/Library/Android/sdk/ndk${NC}"
+        "Android Studio → SDK Manager"
 }
 
 clean_dev_mobile() {
@@ -200,8 +199,8 @@ clean_dev_mobile() {
     # Simulator runtime caches.
     safe_clean ~/Library/Developer/CoreSimulator/Profiles/Runtimes/*/Contents/Resources/RuntimeRoot/System/Library/Caches/* "Simulator runtime cache"
     safe_clean ~/Library/Caches/Google/AndroidStudio*/* "Android Studio cache"
-    safe_clean ~/Library/Caches/CocoaPods/* "CocoaPods cache"
-    safe_clean ~/.cache/flutter/* "Flutter cache"
+    # safe_clean ~/Library/Caches/CocoaPods/* "CocoaPods cache"
+    # safe_clean ~/.cache/flutter/* "Flutter cache"
     safe_clean ~/.android/build-cache/* "Android build cache"
     safe_clean ~/.android/cache/* "Android SDK cache"
     safe_clean ~/Library/Developer/Xcode/UserData/IB\ Support/* "Xcode Interface Builder cache"
@@ -214,12 +213,117 @@ clean_dev_jvm() {
     safe_clean ~/.sbt/* "SBT cache"
     safe_clean ~/.ivy2/cache/* "Ivy cache"
 }
+# JetBrains Toolbox old IDE versions (keep current + recent backup).
+clean_dev_jetbrains_toolbox() {
+    local toolbox_root="$HOME/Library/Application Support/JetBrains/Toolbox/apps"
+    [[ -d "$toolbox_root" ]] || return 0
+
+    local keep_previous="${MOLE_JETBRAINS_TOOLBOX_KEEP:-1}"
+    [[ "$keep_previous" =~ ^[0-9]+$ ]] || keep_previous=1
+
+    # Save and filter whitelist patterns for toolbox path
+    local whitelist_overridden="false"
+    local -a original_whitelist=()
+    if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then
+        original_whitelist=("${WHITELIST_PATTERNS[@]}")
+        local -a filtered_whitelist=()
+        local pattern
+        for pattern in "${WHITELIST_PATTERNS[@]}"; do
+            [[ "$toolbox_root" == "$pattern" || "$pattern" == "$toolbox_root"* ]] && continue
+            filtered_whitelist+=("$pattern")
+        done
+        WHITELIST_PATTERNS=("${filtered_whitelist[@]+${filtered_whitelist[@]}}")
+        whitelist_overridden="true"
+    fi
+
+    # Helper to restore whitelist on exit
+    _restore_whitelist() {
+        [[ "$whitelist_overridden" == "true" ]] && WHITELIST_PATTERNS=("${original_whitelist[@]}")
+        return 0
+    }
+
+    local -a product_dirs=()
+    while IFS= read -r -d '' product_dir; do
+        product_dirs+=("$product_dir")
+    done < <(command find "$toolbox_root" -mindepth 1 -maxdepth 1 -type d -print0 2> /dev/null)
+
+    if [[ ${#product_dirs[@]} -eq 0 ]]; then
+        _restore_whitelist
+        return 0
+    fi
+
+    local product_dir
+    for product_dir in "${product_dirs[@]}"; do
+        while IFS= read -r -d '' channel_dir; do
+            local current_link=""
+            local current_real=""
+            if [[ -L "$channel_dir/current" ]]; then
+                current_link=$(readlink "$channel_dir/current" 2> /dev/null || true)
+                if [[ -n "$current_link" ]]; then
+                    if [[ "$current_link" == /* ]]; then
+                        current_real="$current_link"
+                    else
+                        current_real="$channel_dir/$current_link"
+                    fi
+                fi
+            elif [[ -d "$channel_dir/current" ]]; then
+                current_real="$channel_dir/current"
+            fi
+
+            local -a version_dirs=()
+            while IFS= read -r -d '' version_dir; do
+                local name
+                name=$(basename "$version_dir")
+
+                [[ "$name" == "current" ]] && continue
+                [[ "$name" == .* ]] && continue
+                [[ "$name" == "plugins" || "$name" == "plugins-lib" || "$name" == "plugins-libs" ]] && continue
+                [[ -n "$current_real" && "$version_dir" == "$current_real" ]] && continue
+                [[ ! "$name" =~ ^[0-9] ]] && continue
+
+                version_dirs+=("$version_dir")
+            done < <(command find "$channel_dir" -mindepth 1 -maxdepth 1 -type d -print0 2> /dev/null)
+
+            [[ ${#version_dirs[@]} -eq 0 ]] && continue
+
+            local -a sorted_dirs=()
+            while IFS= read -r line; do
+                local dir_path="${line#* }"
+                sorted_dirs+=("$dir_path")
+            done < <(
+                for version_dir in "${version_dirs[@]}"; do
+                    local mtime
+                    mtime=$(stat -f%m "$version_dir" 2> /dev/null || echo "0")
+                    printf '%s %s\n' "$mtime" "$version_dir"
+                done | sort -rn
+            )
+
+            if [[ ${#sorted_dirs[@]} -le "$keep_previous" ]]; then
+                continue
+            fi
+
+            local idx=0
+            local dir_path
+            for dir_path in "${sorted_dirs[@]}"; do
+                if [[ $idx -lt $keep_previous ]]; then
+                    ((idx++))
+                    continue
+                fi
+                safe_clean "$dir_path" "JetBrains Toolbox old IDE version"
+                note_activity
+                ((idx++))
+            done
+        done < <(command find "$product_dir" -mindepth 1 -maxdepth 1 -type d -name "ch-*" -print0 2> /dev/null)
+    done
+
+    _restore_whitelist
+}
 # Other language tool caches.
 clean_dev_other_langs() {
     safe_clean ~/.bundle/cache/* "Ruby Bundler cache"
     safe_clean ~/.composer/cache/* "PHP Composer cache"
     safe_clean ~/.nuget/packages/* "NuGet packages cache"
-    safe_clean ~/.pub-cache/* "Dart Pub cache"
+    # safe_clean ~/.pub-cache/* "Dart Pub cache"
     safe_clean ~/.cache/bazel/* "Bazel cache"
     safe_clean ~/.cache/zig/* "Zig cache"
     safe_clean ~/Library/Caches/deno/* "Deno cache"
@@ -343,6 +447,7 @@ clean_developer_tools() {
     clean_project_caches
     clean_dev_mobile
     clean_dev_jvm
+    clean_dev_jetbrains_toolbox
     clean_dev_other_langs
     clean_dev_cicd
     clean_dev_database

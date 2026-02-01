@@ -17,7 +17,7 @@ jobs:
         run: brew install bats-core shellcheck
 
       - name: Set up Go
-        uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c # v5
+        uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # v5
         with:
           go-version: "1.24.6"
 
@@ -79,7 +79,7 @@ jobs:
           echo "Checking for hardcoded secrets..."
           matches=$(grep -r "password\|secret\|api_key" --include="*.sh" . \
             | grep -v "# \|test" \
-            | grep -v -E "lib/core/sudo\.sh|lib/core/app_protection\.sh|lib/clean/user\.sh|lib/clean/brew\.sh|bin/optimize\.sh|lib/clean/apps\.sh" || true)
+            | grep -v -E "lib/core/sudo\.sh|lib/core/app_protection\.sh|lib/clean/user\.sh|lib/clean/brew\.sh|bin/optimize\.sh|lib/clean/apps\.sh|lib/uninstall/batch\.sh" || true)
           if [[ -n "$matches" ]]; then
             echo "$matches"
             echo "✗ Potential secrets found"

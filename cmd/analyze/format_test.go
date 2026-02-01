@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRuneWidth(t *testing.T) {
@@ -305,5 +306,44 @@ func TestCalculateNameWidth(t *testing.T) {
 			t.Errorf("calculateNameWidth(%d) = %d, want between %d and %d",
 				tt.termWidth, got, tt.wantMin, tt.wantMax)
 		}
+	}
+}
+
+func TestFormatUnusedTime(t *testing.T) {
+	now := time.Now().UTC()
+	tests := []struct {
+		name    string
+		daysAgo int
+		want    string
+	}{
+		{"zero time", -1, ""},            // Special case: will use time.Time{}
+		{"recent file", 30, ""},          // < 90 days returns empty
+		{"just under threshold", 89, ""}, // Boundary: 89 days still empty
+		{"at 90 days", 90, ">3mo"},       // Boundary: exactly 90 days
+		{"4 months", 120, ">4mo"},
+		{"6 months", 180, ">6mo"},
+		{"11 months", 330, ">11mo"},
+		{"just under 1 year", 364, ">12mo"},
+		{"exactly 1 year", 365, ">1yr"},
+		{"18 months", 548, ">1yr"}, // Between 1 and 2 years
+		{"just under 2 years", 729, ">1yr"},
+		{"exactly 2 years", 730, ">2yr"},
+		{"3 years", 1095, ">3yr"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var lastAccess time.Time
+			if tt.daysAgo >= 0 {
+				// Use a fixed UTC baseline to avoid DST-related flakiness.
+				lastAccess = now.Add(-time.Duration(tt.daysAgo) * 24 * time.Hour)
+			}
+			// If daysAgo < 0, lastAccess remains zero value
+
+			got := formatUnusedTime(lastAccess)
+			if got != tt.want {
+				t.Errorf("formatUnusedTime(%d days ago) = %q, want %q", tt.daysAgo, got, tt.want)
+			}
+		})
 	}
 }

@@ -170,7 +170,43 @@ read_key() {
         case "$key" in
             $'\n' | $'\r') echo "ENTER" ;;
             $'\x7f' | $'\x08') echo "DELETE" ;;
-            $'\x1b') echo "QUIT" ;;
+            $'\x1b')
+                # Check if this is an escape sequence (arrow keys) or ESC key
+                if IFS= read -r -s -n 1 -t 0.1 rest 2> /dev/null; then
+                    if [[ "$rest" == "[" ]]; then
+                        if IFS= read -r -s -n 1 -t 0.1 rest2 2> /dev/null; then
+                            case "$rest2" in
+                                "A") echo "UP" ;;
+                                "B") echo "DOWN" ;;
+                                "C") echo "RIGHT" ;;
+                                "D") echo "LEFT" ;;
+                                "3")
+                                    IFS= read -r -s -n 1 -t 0.1 rest3 2> /dev/null
+                                    [[ "$rest3" == "~" ]] && echo "DELETE" || echo "OTHER"
+                                    ;;
+                                *) echo "OTHER" ;;
+                            esac
+                        else echo "QUIT"; fi
+                    elif [[ "$rest" == "O" ]]; then
+                        if IFS= read -r -s -n 1 -t 0.1 rest2 2> /dev/null; then
+                            case "$rest2" in
+                                "A") echo "UP" ;;
+                                "B") echo "DOWN" ;;
+                                "C") echo "RIGHT" ;;
+                                "D") echo "LEFT" ;;
+                                *) echo "OTHER" ;;
+                            esac
+                        else echo "OTHER"; fi
+                    else
+                        # Not an escape sequence, it's ESC key
+                        echo "QUIT"
+                    fi
+                else
+                    # No following characters, it's ESC key
+                    echo "QUIT"
+                fi
+                ;;
+            ' ') echo "SPACE" ;; # Allow space in filter mode for selection
             [[:print:]]) echo "CHAR:$key" ;;
             *) echo "OTHER" ;;
         esac
@@ -184,7 +220,6 @@ read_key() {
     case "$key" in
         $'\n' | $'\r') echo "ENTER" ;;
         ' ') echo "SPACE" ;;
-        '/') echo "FILTER" ;;
         'q' | 'Q') echo "QUIT" ;;
         'R') echo "RETRY" ;;
         'm' | 'M') echo "MORE" ;;
@@ -266,13 +301,16 @@ start_inline_spinner() {
             [[ -z "$chars" ]] && chars="|/-\\"
             local i=0
 
+            # Clear line on first output to prevent text remnants from previous messages
+            printf "\r\033[2K" >&2 || true
+
             # Cooperative exit: check for stop file instead of relying on signals
             while [[ ! -f "$stop_file" ]]; do
                 local c="${chars:$((i % ${#chars})):1}"
                 # Output to stderr to avoid interfering with stdout
                 printf "\r${MOLE_SPINNER_PREFIX:-}${BLUE}%s${NC} %s" "$c" "$message" >&2 || break
                 ((i++))
-                sleep 0.1
+                sleep 0.05
             done
 
             # Clean up stop file before exiting
@@ -280,7 +318,7 @@ start_inline_spinner() {
             exit 0
         ) &
         INLINE_SPINNER_PID=$!
-        disown 2> /dev/null || true
+        disown "$INLINE_SPINNER_PID" 2> /dev/null || true
     else
         echo -n "  ${BLUE}|${NC} $message" >&2 || true
     fi

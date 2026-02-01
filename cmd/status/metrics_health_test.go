@@ -52,8 +52,8 @@ func TestFormatUptime(t *testing.T) {
 	if got := formatUptime(3600 + 120); got != "1h 2m" {
 		t.Fatalf("expected \"1h 2m\", got %s", got)
 	}
-	if got := formatUptime(86400*2 + 3600*3 + 60*5); got != "2d 3h 5m" {
-		t.Fatalf("expected \"2d 3h 5m\", got %s", got)
+	if got := formatUptime(86400*2 + 3600*3 + 60*5); got != "2d 3h" {
+		t.Fatalf("expected \"2d 3h\", got %s", got)
 	}
 }
 
@@ -86,20 +86,14 @@ func TestColorizeTempThresholds(t *testing.T) {
 }
 
 func TestColorizeTempStyleRanges(t *testing.T) {
-	// Test that different temperature ranges use different styles
-	// We can't easily test the exact style applied, but we can verify
-	// the function returns consistent results for each range
-
 	normalTemp := colorizeTemp(40.0)
 	warningTemp := colorizeTemp(65.0)
 	dangerTemp := colorizeTemp(85.0)
 
-	// All should be non-empty and contain the formatted value
 	if normalTemp == "" || warningTemp == "" || dangerTemp == "" {
 		t.Fatal("colorizeTemp should not return empty strings")
 	}
 
-	// Verify formatting precision (one decimal place)
 	if !strings.Contains(normalTemp, "40.0") {
 		t.Errorf("normal temp should contain '40.0', got: %s", normalTemp)
 	}
@@ -108,5 +102,95 @@ func TestColorizeTempStyleRanges(t *testing.T) {
 	}
 	if !strings.Contains(dangerTemp, "85.0") {
 		t.Errorf("danger temp should contain '85.0', got: %s", dangerTemp)
+	}
+}
+
+func TestCalculateHealthScoreEdgeCases(t *testing.T) {
+	tests := []struct {
+		name    string
+		cpu     CPUStatus
+		mem     MemoryStatus
+		disks   []DiskStatus
+		diskIO  DiskIOStatus
+		thermal ThermalStatus
+		wantMin int
+		wantMax int
+	}{
+		{
+			name:    "all metrics at normal threshold",
+			cpu:     CPUStatus{Usage: 30.0},
+			mem:     MemoryStatus{UsedPercent: 50.0},
+			disks:   []DiskStatus{{UsedPercent: 70.0}},
+			diskIO:  DiskIOStatus{ReadRate: 25.0, WriteRate: 25.0},
+			thermal: ThermalStatus{CPUTemp: 60.0},
+			wantMin: 95,
+			wantMax: 100,
+		},
+		{
+			name:    "memory pressure warning only",
+			cpu:     CPUStatus{Usage: 10.0},
+			mem:     MemoryStatus{UsedPercent: 40.0, Pressure: "warn"},
+			disks:   []DiskStatus{{UsedPercent: 40.0}},
+			diskIO:  DiskIOStatus{ReadRate: 5.0, WriteRate: 5.0},
+			thermal: ThermalStatus{CPUTemp: 40.0},
+			wantMin: 90,
+			wantMax: 100,
+		},
+		{
+			name:    "empty disks array",
+			cpu:     CPUStatus{Usage: 10.0},
+			mem:     MemoryStatus{UsedPercent: 30.0},
+			disks:   []DiskStatus{},
+			diskIO:  DiskIOStatus{ReadRate: 5.0, WriteRate: 5.0},
+			thermal: ThermalStatus{CPUTemp: 40.0},
+			wantMin: 95,
+			wantMax: 100,
+		},
+		{
+			name:    "zero thermal data",
+			cpu:     CPUStatus{Usage: 10.0},
+			mem:     MemoryStatus{UsedPercent: 30.0},
+			disks:   []DiskStatus{{UsedPercent: 40.0}},
+			diskIO:  DiskIOStatus{ReadRate: 5.0, WriteRate: 5.0},
+			thermal: ThermalStatus{CPUTemp: 0},
+			wantMin: 95,
+			wantMax: 100,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			score, _ := calculateHealthScore(tt.cpu, tt.mem, tt.disks, tt.diskIO, tt.thermal)
+			if score < tt.wantMin || score > tt.wantMax {
+				t.Errorf("calculateHealthScore() = %d, want range [%d, %d]", score, tt.wantMin, tt.wantMax)
+			}
+		})
+	}
+}
+
+func TestFormatUptimeEdgeCases(t *testing.T) {
+	tests := []struct {
+		name string
+		secs uint64
+		want string
+	}{
+		{"zero seconds", 0, "0m"},
+		{"59 seconds", 59, "0m"},
+		{"one minute exact", 60, "1m"},
+		{"59 minutes 59 seconds", 3599, "59m"},
+		{"one hour exact", 3600, "1h 0m"},
+		{"one day exact", 86400, "1d 0h"},
+		{"one day one hour", 90000, "1d 1h"},
+		{"multiple days no hours", 172800, "2d 0h"},
+		{"large uptime", 31536000, "365d 0h"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatUptime(tt.secs)
+			if got != tt.want {
+				t.Errorf("formatUptime(%d) = %q, want %q", tt.secs, got, tt.want)
+			}
+		})
 	}
 }

@@ -248,27 +248,24 @@ EOF
 }
 
 @test "clean_edge_old_versions removes old versions but keeps current" {
-    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=true bash --noprofile --norc <<'EOF'
+    # Create mock Edge directory structure
+    local EDGE_APP="$HOME/Applications/Microsoft Edge.app"
+    local VERSIONS_DIR="$EDGE_APP/Contents/Frameworks/Microsoft Edge Framework.framework/Versions"
+    mkdir -p "$VERSIONS_DIR"/{120.0.0.0,121.0.0.0,122.0.0.0}
+    ln -s "122.0.0.0" "$VERSIONS_DIR/Current"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" DRY_RUN=true \
+        MOLE_EDGE_APP_PATHS="$EDGE_APP" bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/user.sh"
 
 pgrep() { return 1; }
-export -f pgrep
-
-# Create mock Edge directory structure
-EDGE_APP="$HOME/Applications/Microsoft Edge.app"
-VERSIONS_DIR="$EDGE_APP/Contents/Frameworks/Microsoft Edge Framework.framework/Versions"
-mkdir -p "$VERSIONS_DIR"/{120.0.0.0,121.0.0.0,122.0.0.0}
-
-# Create Current symlink pointing to 122.0.0.0
-ln -s "122.0.0.0" "$VERSIONS_DIR/Current"
-
 is_path_whitelisted() { return 1; }
 get_path_size_kb() { echo "10240"; }
 bytes_to_human() { echo "10M"; }
 note_activity() { :; }
-export -f is_path_whitelisted get_path_size_kb bytes_to_human note_activity
+export -f pgrep is_path_whitelisted get_path_size_kb bytes_to_human note_activity
 
 files_cleaned=0
 total_size_cleaned=0
@@ -289,7 +286,14 @@ EOF
     # Use a fresh temp directory for this test
     TEST_HOME="$(mktemp -d "${BATS_TEST_DIRNAME}/tmp-test8.XXXXXX")"
 
-    run env HOME="$TEST_HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
+    # Create Edge with only current version
+    local EDGE_APP="$TEST_HOME/Applications/Microsoft Edge.app"
+    local VERSIONS_DIR="$EDGE_APP/Contents/Frameworks/Microsoft Edge Framework.framework/Versions"
+    mkdir -p "$VERSIONS_DIR/122.0.0.0"
+    ln -s "122.0.0.0" "$VERSIONS_DIR/Current"
+
+    run env HOME="$TEST_HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+        MOLE_EDGE_APP_PATHS="$EDGE_APP" bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/user.sh"
@@ -301,16 +305,9 @@ bytes_to_human() { echo "10M"; }
 note_activity() { :; }
 export -f pgrep is_path_whitelisted get_path_size_kb bytes_to_human note_activity
 
-# Initialize counters
 files_cleaned=0
 total_size_cleaned=0
 total_items=0
-
-# Create Edge with only current version
-EDGE_APP="$HOME/Applications/Microsoft Edge.app"
-VERSIONS_DIR="$EDGE_APP/Contents/Frameworks/Microsoft Edge Framework.framework/Versions"
-mkdir -p "$VERSIONS_DIR/122.0.0.0"
-ln -s "122.0.0.0" "$VERSIONS_DIR/Current"
 
 clean_edge_old_versions
 EOF

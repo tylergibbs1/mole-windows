@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v4/disk"
 )
 
 var skipDiskMounts = map[string]bool{

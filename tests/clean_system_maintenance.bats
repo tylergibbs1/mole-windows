@@ -108,105 +108,47 @@ EOF
     [[ "$output" == *"No incomplete backups found"* ]]
 }
 
-@test "clean_local_snapshots skips in non-interactive mode" {
+@test "clean_local_snapshots reports snapshot count" {
     run bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/system.sh"
 
-tmutil() {
-    if [[ "$1" == "listlocalsnapshots" ]]; then
-        printf '%s\n' \
-            "com.apple.TimeMachine.2023-10-25-120000" \
-            "com.apple.TimeMachine.2023-10-24-120000"
-        return 0
-    fi
-    return 0
-}
-start_section_spinner(){ :; }
-stop_section_spinner(){ :; }
-tm_is_running(){ return 1; }
-
-DRY_RUN="false"
-clean_local_snapshots
-EOF
-
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"skipping non-interactive mode"* ]]
-    [[ "$output" != *"Removed snapshot"* ]]
-}
-
-@test "clean_local_snapshots keeps latest in dry-run" {
-    run bash --noprofile --norc <<'EOF'
-set -euo pipefail
-source "$PROJECT_ROOT/lib/core/common.sh"
-source "$PROJECT_ROOT/lib/clean/system.sh"
-
-tmutil() {
-    if [[ "$1" == "listlocalsnapshots" ]]; then
-        printf '%s\n' \
-            "com.apple.TimeMachine.2023-10-25-120000" \
-            "com.apple.TimeMachine.2023-10-25-130000" \
-            "com.apple.TimeMachine.2023-10-24-120000"
-        return 0
-    fi
-    return 0
+run_with_timeout() {
+    printf '%s\n' \
+        "com.apple.TimeMachine.2023-10-25-120000" \
+        "com.apple.TimeMachine.2023-10-24-120000"
 }
 start_section_spinner(){ :; }
 stop_section_spinner(){ :; }
 note_activity(){ :; }
 tm_is_running(){ return 1; }
 
-DRY_RUN="true"
 clean_local_snapshots
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Local snapshot: com.apple.TimeMachine.2023-10-25-120000"* ]]
-    [[ "$output" == *"Local snapshot: com.apple.TimeMachine.2023-10-24-120000"* ]]
-    [[ "$output" != *"Local snapshot: com.apple.TimeMachine.2023-10-25-130000"* ]]
+    [[ "$output" == *"Time Machine local snapshots:"* ]]
+    [[ "$output" == *"tmutil listlocalsnapshots /"* ]]
 }
 
-@test "clean_local_snapshots uses read fallback when read_key missing" {
-    if ! command -v script > /dev/null 2>&1; then
-        skip "script not available"
-    fi
-
-    local tmp_script="$BATS_TEST_TMPDIR/clean_local_snapshots_fallback.sh"
-    cat > "$tmp_script" <<'EOF'
+@test "clean_local_snapshots is quiet when no snapshots" {
+    run bash --noprofile --norc <<'EOF'
 set -euo pipefail
 source "$PROJECT_ROOT/lib/core/common.sh"
 source "$PROJECT_ROOT/lib/clean/system.sh"
 
-tmutil() {
-    if [[ "$1" == "listlocalsnapshots" ]]; then
-        printf '%s\n' \
-            "com.apple.TimeMachine.2023-10-25-120000" \
-            "com.apple.TimeMachine.2023-10-24-120000"
-        return 0
-    fi
-    return 0
-}
+run_with_timeout() { echo "Snapshots for disk /:"; }
 start_section_spinner(){ :; }
 stop_section_spinner(){ :; }
 note_activity(){ :; }
 tm_is_running(){ return 1; }
 
-unset -f read_key
-
-CALL_LOG="$HOME/snapshot_calls.log"
-> "$CALL_LOG"
-sudo() { echo "sudo:$*" >> "$CALL_LOG"; return 0; }
-
-DRY_RUN="false"
 clean_local_snapshots
-cat "$CALL_LOG"
 EOF
 
-    run bash --noprofile --norc -c "printf '\n' | script -q /dev/null bash \"$tmp_script\""
-
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Skipped"* ]]
+    [[ "$output" != *"Time Machine local snapshots"* ]]
 }
 
 

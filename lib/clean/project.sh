@@ -44,8 +44,8 @@ readonly PURGE_TARGETS=(
 # Minimum age in days before considering for cleanup.
 readonly MIN_AGE_DAYS=7
 # Scan depth defaults (relative to search root).
-readonly PURGE_MIN_DEPTH_DEFAULT=2
-readonly PURGE_MAX_DEPTH_DEFAULT=4
+readonly PURGE_MIN_DEPTH_DEFAULT=1
+readonly PURGE_MAX_DEPTH_DEFAULT=6
 # Search paths (default, can be overridden via config file).
 readonly DEFAULT_PURGE_SEARCH_PATHS=(
     "$HOME/www"
@@ -352,6 +352,31 @@ scan_purge_targets() {
     local stats_dir="${XDG_CACHE_HOME:-$HOME/.cache}/mole"
     echo "$search_path" > "$stats_dir/purge_scanning" 2> /dev/null || true
 
+    # Helper to process raw results
+    process_scan_results() {
+        local input_file="$1"
+        if [[ -f "$input_file" ]]; then
+            while IFS= read -r item; do
+                # Check if we should abort (scanning file removed by Ctrl+C)
+                if [[ ! -f "$stats_dir/purge_scanning" ]]; then
+                    return
+                fi
+
+                if [[ -n "$item" ]] && is_safe_project_artifact "$item" "$search_path"; then
+                    echo "$item"
+                    # Update scanning path to show current project directory
+                    local project_dir=$(dirname "$item")
+                    echo "$project_dir" > "$stats_dir/purge_scanning" 2> /dev/null || true
+                fi
+            done < "$input_file" | filter_nested_artifacts | filter_protected_artifacts > "$output_file"
+            rm -f "$input_file"
+        else
+            touch "$output_file"
+        fi
+    }
+
+    local use_find=true
+
     if command -v fd > /dev/null 2>&1; then
         # Escape regex special characters in target names for fd patterns
         local escaped_targets=()
@@ -375,29 +400,16 @@ scan_purge_targets() {
             "--exclude" ".Trash"
             "--exclude" "Applications"
         )
-        # Write to temp file first, then filter - more efficient than piping
-        fd "${fd_args[@]}" "$pattern" "$search_path" 2> /dev/null > "$output_file.raw" || true
 
-        # Single pass: safe + nested + protected
-        if [[ -f "$output_file.raw" ]]; then
-            while IFS= read -r item; do
-                # Check if we should abort (scanning file removed by Ctrl+C)
-                if [[ ! -f "$stats_dir/purge_scanning" ]]; then
-                    return
-                fi
-
-                if [[ -n "$item" ]] && is_safe_project_artifact "$item" "$search_path"; then
-                    echo "$item"
-                    # Update scanning path to show current project directory
-                    local project_dir=$(dirname "$item")
-                    echo "$project_dir" > "$stats_dir/purge_scanning" 2> /dev/null || true
-                fi
-            done < "$output_file.raw" | filter_nested_artifacts | filter_protected_artifacts > "$output_file"
-            rm -f "$output_file.raw"
-        else
-            touch "$output_file"
+        # Try running fd. If it succeeds (exit code 0), use it.
+        # If it fails (e.g. bad flag, permissions, binary issue), fallback to find.
+        if fd "${fd_args[@]}" "$pattern" "$search_path" 2> /dev/null > "$output_file.raw"; then
+            use_find=false
+            process_scan_results "$output_file.raw"
         fi
-    else
+    fi
+
+    if [[ "$use_find" == "true" ]]; then
         # Pruned find avoids descending into heavy directories.
         local find_expr=()
         local prune_dirs=(".git" "Library" ".Trash" "Applications")
@@ -415,25 +427,7 @@ scan_purge_targets() {
         command find "$search_path" -mindepth "$min_depth" -maxdepth "$max_depth" -type d \
             \( "${find_expr[@]}" \) 2> /dev/null > "$output_file.raw" || true
 
-        # Single pass: safe + nested + protected
-        if [[ -f "$output_file.raw" ]]; then
-            while IFS= read -r item; do
-                # Check if we should abort (scanning file removed by Ctrl+C)
-                if [[ ! -f "$stats_dir/purge_scanning" ]]; then
-                    return
-                fi
-
-                if [[ -n "$item" ]] && is_safe_project_artifact "$item" "$search_path"; then
-                    echo "$item"
-                    # Update scanning path to show current project directory
-                    local project_dir=$(dirname "$item")
-                    echo "$project_dir" > "$stats_dir/purge_scanning" 2> /dev/null || true
-                fi
-            done < "$output_file.raw" | filter_nested_artifacts | filter_protected_artifacts > "$output_file"
-            rm -f "$output_file.raw"
-        else
-            touch "$output_file"
-        fi
+        process_scan_results "$output_file.raw"
     fi
 }
 # Filter out nested artifacts (e.g. node_modules inside node_modules, .build inside build).
@@ -489,7 +483,7 @@ is_recently_modified() {
 get_dir_size_kb() {
     local path="$1"
     if [[ -d "$path" ]]; then
-        du -sk "$path" 2> /dev/null | awk '{print $1}' || echo "0"
+        du -skP "$path" 2> /dev/null | awk '{print $1}' || echo "0"
     else
         echo "0"
     fi
@@ -606,7 +600,7 @@ select_purge_categories() {
         fi
 
         printf "%s\n" "$clear_line"
-        printf "%s${PURPLE_BOLD}Select Categories to Clean${NC}%s ${GRAY}- ${selected_gb}GB ($selected_count selected)${NC}\n" "$clear_line" "$scroll_indicator"
+        printf "%s${PURPLE_BOLD}Select Categories to Clean${NC}%s ${GRAY}, ${selected_gb}GB, ${selected_count} selected${NC}\n" "$clear_line" "$scroll_indicator"
         printf "%s\n" "$clear_line"
 
         IFS=',' read -r -a recent_flags <<< "${PURGE_RECENT_CATEGORIES:-}"
@@ -1135,7 +1129,7 @@ clean_project_artifacts() {
         fi
         if [[ -t 1 ]]; then
             stop_inline_spinner
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} $project_path - $artifact_type ${GREEN}($size_human)${NC}"
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} $project_path, $artifact_type${NC}, ${GREEN}$size_human${NC}"
         fi
     done
     # Update count

@@ -58,7 +58,7 @@ manage_purge_paths() {
             if [[ -d "$path" ]]; then
                 echo -e "  ${GREEN}✓${NC} $display_path"
             else
-                echo -e "  ${GRAY}○${NC} $display_path ${GRAY}(not found)${NC}"
+                echo -e "  ${GRAY}○${NC} $display_path${GRAY}, not found${NC}"
             fi
         done
     fi
@@ -76,7 +76,7 @@ manage_purge_paths() {
 
     echo ""
     if [[ $custom_count -gt 0 ]]; then
-        echo -e "${GRAY}Using custom config with $custom_count path(s)${NC}"
+        echo -e "${GRAY}Using custom config with $custom_count paths${NC}"
     else
         echo -e "${GRAY}Using ${#DEFAULT_PURGE_SEARCH_PATHS[@]} default paths${NC}"
     fi

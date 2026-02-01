@@ -84,7 +84,7 @@ if [[ $# -eq 0 ]]; then
             echo -e "${GREEN}${ICON_SUCCESS}${NC} Removed stale completion entries from $config_file"
             echo ""
         fi
-        log_error "mole not found in PATH - install Mole before enabling completion"
+        log_error "mole not found in PATH, install Mole before enabling completion"
         exit 1
     fi
 

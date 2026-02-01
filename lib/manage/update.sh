@@ -18,14 +18,14 @@ format_brew_update_label() {
     ((formulas > 0)) && details+=("${formulas} formula")
     ((casks > 0)) && details+=("${casks} cask")
 
-    local detail_str="(${total} updates)"
+    local detail_str=", ${total} updates"
     if ((${#details[@]} > 0)); then
-        detail_str="($(
+        detail_str=", $(
             IFS=', '
             printf '%s' "${details[*]}"
-        ))"
+        )"
     fi
-    printf "  • Homebrew %s" "$detail_str"
+    printf "  • Homebrew%s" "$detail_str"
 }
 
 brew_has_outdated() {
@@ -54,7 +54,7 @@ ask_for_updates() {
 
     if [[ -n "${APPSTORE_UPDATE_COUNT:-}" && "${APPSTORE_UPDATE_COUNT:-0}" -gt 0 ]]; then
         has_updates=true
-        update_list+=("  • App Store (${APPSTORE_UPDATE_COUNT} apps)")
+        update_list+=("  • App Store, ${APPSTORE_UPDATE_COUNT} apps")
     fi
 
     if [[ -n "${MACOS_UPDATE_AVAILABLE:-}" && "${MACOS_UPDATE_AVAILABLE}" == "true" ]]; then
@@ -132,10 +132,10 @@ perform_updates() {
         echo -e "${GRAY}No updates to perform${NC}"
         return 0
     elif [[ $updated_count -eq $total_count ]]; then
-        echo -e "${GREEN}All updates completed (${updated_count}/${total_count})${NC}"
+        echo -e "${GREEN}All updates completed, ${updated_count}/${total_count}${NC}"
         return 0
     else
-        echo -e "${RED}Update failed (${updated_count}/${total_count})${NC}"
+        echo -e "${RED}Update failed, ${updated_count}/${total_count}${NC}"
         return 1
     fi
 }

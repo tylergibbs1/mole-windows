@@ -39,6 +39,33 @@ validate_path_for_deletion() {
         return 1
     fi
 
+    # Check symlink target if path is a symbolic link
+    if [[ -L "$path" ]]; then
+        local link_target
+        link_target=$(readlink "$path" 2> /dev/null) || {
+            log_error "Cannot read symlink: $path"
+            return 1
+        }
+
+        # Resolve relative symlinks to absolute paths for validation
+        local resolved_target="$link_target"
+        if [[ "$link_target" != /* ]]; then
+            local link_dir
+            link_dir=$(dirname "$path")
+            resolved_target=$(cd "$link_dir" 2> /dev/null && cd "$(dirname "$link_target")" 2> /dev/null && pwd)/$(basename "$link_target") || resolved_target=""
+        fi
+
+        # Validate resolved target against protected paths
+        if [[ -n "$resolved_target" ]]; then
+            case "$resolved_target" in
+                /System/* | /usr/bin/* | /usr/lib/* | /bin/* | /sbin/* | /private/etc/*)
+                    log_error "Symlink points to protected system path: $path -> $resolved_target"
+                    return 1
+                    ;;
+            esac
+        fi
+    fi
+
     # Check path is absolute
     if [[ "$path" != /* ]]; then
         log_error "Path validation failed: path must be absolute: $path"
@@ -75,7 +102,8 @@ validate_path_for_deletion() {
             /private/var/db/diagnostics | /private/var/db/diagnostics/* | \
             /private/var/db/DiagnosticPipeline | /private/var/db/DiagnosticPipeline/* | \
             /private/var/db/powerlog | /private/var/db/powerlog/* | \
-            /private/var/db/reportmemoryexception | /private/var/db/reportmemoryexception/*)
+            /private/var/db/reportmemoryexception | /private/var/db/reportmemoryexception/* | \
+            /private/var/db/receipts/*.bom | /private/var/db/receipts/*.plist)
             return 0
             ;;
     esac
@@ -169,6 +197,18 @@ safe_remove() {
 
     debug_log "Removing: $path"
 
+    # Calculate size before deletion for logging
+    local size_kb=0
+    local size_human=""
+    if oplog_enabled; then
+        if [[ -e "$path" ]]; then
+            size_kb=$(get_path_size_kb "$path" 2> /dev/null || echo "0")
+            if [[ "$size_kb" =~ ^[0-9]+$ ]] && [[ "$size_kb" -gt 0 ]]; then
+                size_human=$(bytes_to_human "$((size_kb * 1024))" 2> /dev/null || echo "${size_kb}KB")
+            fi
+        fi
+    fi
+
     # Perform the deletion
     # Use || to capture the exit code so set -e won't abort on rm failures
     local error_msg
@@ -176,6 +216,8 @@ safe_remove() {
     error_msg=$(rm -rf "$path" 2>&1) || rm_exit=$? # safe_remove
 
     if [[ $rm_exit -eq 0 ]]; then
+        # Log successful removal
+        log_operation "${MOLE_CURRENT_COMMAND:-clean}" "REMOVED" "$path" "$size_human"
         return 0
     else
         # Check if it's a permission error
@@ -183,9 +225,11 @@ safe_remove() {
             MOLE_PERMISSION_DENIED_COUNT=${MOLE_PERMISSION_DENIED_COUNT:-0}
             MOLE_PERMISSION_DENIED_COUNT=$((MOLE_PERMISSION_DENIED_COUNT + 1))
             export MOLE_PERMISSION_DENIED_COUNT
-            debug_log "Permission denied: $path (may need Full Disk Access)"
+            debug_log "Permission denied: $path, may need Full Disk Access"
+            log_operation "${MOLE_CURRENT_COMMAND:-clean}" "FAILED" "$path" "permission denied"
         else
             [[ "$silent" != "true" ]] && log_error "Failed to remove: $path"
+            log_operation "${MOLE_CURRENT_COMMAND:-clean}" "FAILED" "$path" "error"
         fi
         return 1
     fi
@@ -223,7 +267,7 @@ safe_sudo_remove() {
 
             if sudo test -e "$path" 2> /dev/null; then
                 local size_kb
-                size_kb=$(sudo du -sk "$path" 2> /dev/null | awk '{print $1}' || echo "0")
+                size_kb=$(sudo du -skP "$path" 2> /dev/null | awk '{print $1}' || echo "0")
                 if [[ "$size_kb" -gt 0 ]]; then
                     file_size=$(bytes_to_human "$((size_kb * 1024))")
                 fi
@@ -239,20 +283,34 @@ safe_sudo_remove() {
                 fi
             fi
 
-            debug_file_action "[DRY RUN] Would remove (sudo)" "$path" "$file_size" "$file_age"
+            debug_file_action "[DRY RUN] Would remove, sudo" "$path" "$file_size" "$file_age"
         else
-            debug_log "[DRY RUN] Would remove (sudo): $path"
+            debug_log "[DRY RUN] Would remove, sudo: $path"
         fi
         return 0
     fi
 
-    debug_log "Removing (sudo): $path"
+    debug_log "Removing, sudo: $path"
+
+    # Calculate size before deletion for logging
+    local size_kb=0
+    local size_human=""
+    if oplog_enabled; then
+        if sudo test -e "$path" 2> /dev/null; then
+            size_kb=$(sudo du -skP "$path" 2> /dev/null | awk '{print $1}' || echo "0")
+            if [[ "$size_kb" =~ ^[0-9]+$ ]] && [[ "$size_kb" -gt 0 ]]; then
+                size_human=$(bytes_to_human "$((size_kb * 1024))" 2> /dev/null || echo "${size_kb}KB")
+            fi
+        fi
+    fi
 
     # Perform the deletion
     if sudo rm -rf "$path" 2> /dev/null; then # SAFE: safe_sudo_remove implementation
+        log_operation "${MOLE_CURRENT_COMMAND:-clean}" "REMOVED" "$path" "$size_human"
         return 0
     else
-        log_error "Failed to remove (sudo): $path"
+        log_error "Failed to remove, sudo: $path"
+        log_operation "${MOLE_CURRENT_COMMAND:-clean}" "FAILED" "$path" "sudo error"
         return 1
     fi
 }
@@ -281,11 +339,11 @@ safe_find_delete() {
 
     # Validate type filter
     if [[ "$type_filter" != "f" && "$type_filter" != "d" ]]; then
-        log_error "Invalid type filter: $type_filter (must be 'f' or 'd')"
+        log_error "Invalid type filter: $type_filter, must be 'f' or 'd'"
         return 1
     fi
 
-    debug_log "Finding in $base_dir: $pattern (age: ${age_days}d, type: $type_filter)"
+    debug_log "Finding in $base_dir: $pattern, age: ${age_days}d, type: $type_filter"
 
     local find_args=("-maxdepth" "5" "-name" "$pattern" "-type" "$type_filter")
     if [[ "$age_days" -gt 0 ]]; then
@@ -312,7 +370,7 @@ safe_sudo_find_delete() {
 
     # Validate base directory (use sudo for permission-restricted dirs)
     if ! sudo test -d "$base_dir" 2> /dev/null; then
-        debug_log "Directory does not exist (skipping): $base_dir"
+        debug_log "Directory does not exist, skipping: $base_dir"
         return 0
     fi
 
@@ -323,11 +381,11 @@ safe_sudo_find_delete() {
 
     # Validate type filter
     if [[ "$type_filter" != "f" && "$type_filter" != "d" ]]; then
-        log_error "Invalid type filter: $type_filter (must be 'f' or 'd')"
+        log_error "Invalid type filter: $type_filter, must be 'f' or 'd'"
         return 1
     fi
 
-    debug_log "Finding (sudo) in $base_dir: $pattern (age: ${age_days}d, type: $type_filter)"
+    debug_log "Finding, sudo, in $base_dir: $pattern, age: ${age_days}d, type: $type_filter"
 
     local find_args=("-maxdepth" "5" "-name" "$pattern" "-type" "$type_filter")
     if [[ "$age_days" -gt 0 ]]; then
@@ -360,7 +418,7 @@ get_path_size_kb() {
     # Use || echo 0 to ensure failure in du (e.g. permission error) doesn't exit script under set -e
     # Pipefail would normally cause the pipeline to fail if du fails, but || handle catches it.
     local size
-    size=$(command du -sk "$path" 2> /dev/null | awk 'NR==1 {print $1; exit}' || true)
+    size=$(command du -skP "$path" 2> /dev/null | awk 'NR==1 {print $1; exit}' || true)
 
     # Ensure size is a valid number (fix for non-numeric du output)
     if [[ "$size" =~ ^[0-9]+$ ]]; then

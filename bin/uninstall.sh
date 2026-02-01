@@ -137,6 +137,12 @@ scan_applications() {
         done < <(command find "$app_dir" -name "*.app" -maxdepth 3 -print0 2> /dev/null)
     done
 
+    if [[ ${#app_data_tuples[@]} -eq 0 ]]; then
+        rm -f "$temp_file"
+        printf "\r\033[K" >&2
+        echo "No applications found to uninstall." >&2
+        return 1
+    fi
     # Pass 2: metadata + size in parallel (mdls is slow).
     local app_count=0
     local total_apps=${#app_data_tuples[@]}
@@ -368,6 +374,8 @@ cleanup() {
         wait "$sudo_keepalive_pid" 2> /dev/null || true
         sudo_keepalive_pid=""
     fi
+    # Log session end
+    log_operation_session_end "uninstall" "${files_cleaned:-0}" "${total_size_cleaned:-0}"
     show_cursor
     exit "${1:-0}"
 }
@@ -375,6 +383,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 main() {
+    # Set current command for operation logging
+    export MOLE_CURRENT_COMMAND="uninstall"
+    log_operation_session_start "uninstall"
+
     local force_rescan=false
     # Global flags
     for arg in "$@"; do
@@ -490,7 +502,7 @@ main() {
             rm -f "$apps_file"
             continue
         fi
-        echo -e "${BLUE}${ICON_CONFIRM}${NC} Selected ${selection_count} app(s):"
+        echo -e "${BLUE}${ICON_CONFIRM}${NC} Selected ${selection_count} apps:"
         local -a summary_rows=()
         local max_name_display_width=0
         local max_size_width=0

@@ -131,7 +131,7 @@ type cardData struct {
 }
 
 func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int, catHidden bool) string {
-	title := titleStyle.Render("Mole Status")
+	title := titleStyle.Render("Status")
 
 	scoreStyle := getScoreStyle(m.HealthScore)
 	scoreText := subtleStyle.Render("Health ") + scoreStyle.Render(fmt.Sprintf("● %d", m.HealthScore))
@@ -145,7 +145,7 @@ func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int
 		cpuInfo := m.Hardware.CPUModel
 		// Append GPU core count when available.
 		if len(m.GPU) > 0 && m.GPU[0].CoreCount > 0 {
-			cpuInfo += fmt.Sprintf(" (%dGPU)", m.GPU[0].CoreCount)
+			cpuInfo += fmt.Sprintf(", %dGPU", m.GPU[0].CoreCount)
 		}
 		infoParts = append(infoParts, cpuInfo)
 	}
@@ -164,6 +164,9 @@ func renderHeader(m MetricsSnapshot, errMsg string, animFrame int, termWidth int
 	}
 	if m.Hardware.OSVersion != "" {
 		infoParts = append(infoParts, m.Hardware.OSVersion)
+	}
+	if m.Uptime != "" {
+		infoParts = append(infoParts, subtleStyle.Render("up "+m.Uptime))
 	}
 
 	headerLine := title + "  " + scoreText + "  " + strings.Join(infoParts, " · ")
@@ -201,30 +204,6 @@ func getScoreStyle(score int) lipgloss.Style {
 	}
 }
 
-func buildCards(m MetricsSnapshot, _ int) []cardData {
-	cards := []cardData{
-		renderCPUCard(m.CPU, m.Thermal),
-		renderMemoryCard(m.Memory),
-		renderDiskCard(m.Disks, m.DiskIO),
-		renderBatteryCard(m.Batteries, m.Thermal),
-		renderProcessCard(m.TopProcesses),
-		renderNetworkCard(m.Network, m.Proxy),
-	}
-	if hasSensorData(m.Sensors) {
-		cards = append(cards, renderSensorsCard(m.Sensors))
-	}
-	return cards
-}
-
-func hasSensorData(sensors []SensorReading) bool {
-	for _, s := range sensors {
-		if s.Note == "" && s.Value > 0 {
-			return true
-		}
-	}
-	return false
-}
-
 func renderCPUCard(cpu CPUStatus, thermal ThermalStatus) cardData {
 	var lines []string
 
@@ -239,7 +218,7 @@ func renderCPUCard(cpu CPUStatus, thermal ThermalStatus) cardData {
 	lines = append(lines, fmt.Sprintf("Total  %s  %s", usageBar, headerText))
 
 	if cpu.PerCoreEstimated {
-		lines = append(lines, subtleStyle.Render("Per-core data unavailable (using averaged load)"))
+		lines = append(lines, subtleStyle.Render("Per-core data unavailable, using averaged load"))
 	} else if len(cpu.PerCore) > 0 {
 		type coreUsage struct {
 			idx int
@@ -260,10 +239,10 @@ func renderCPUCard(cpu CPUStatus, thermal ThermalStatus) cardData {
 
 	// Load line at the end
 	if cpu.PCoreCount > 0 && cpu.ECoreCount > 0 {
-		lines = append(lines, fmt.Sprintf("Load   %.2f / %.2f / %.2f (%dP+%dE)",
+		lines = append(lines, fmt.Sprintf("Load   %.2f / %.2f / %.2f, %dP+%dE",
 			cpu.Load1, cpu.Load5, cpu.Load15, cpu.PCoreCount, cpu.ECoreCount))
 	} else {
-		lines = append(lines, fmt.Sprintf("Load   %.2f / %.2f / %.2f (%d cores)",
+		lines = append(lines, fmt.Sprintf("Load   %.2f / %.2f / %.2f, %d cores",
 			cpu.Load1, cpu.Load5, cpu.Load15, cpu.LogicalCPU))
 	}
 
@@ -291,7 +270,7 @@ func renderMemoryCard(mem MemoryStatus) cardData {
 		if mem.SwapTotal > 0 {
 			swapPercent = (float64(mem.SwapUsed) / float64(mem.SwapTotal)) * 100.0
 		}
-		swapText := fmt.Sprintf("(%s/%s)", humanBytesCompact(mem.SwapUsed), humanBytesCompact(mem.SwapTotal))
+		swapText := fmt.Sprintf("%s/%s", humanBytesCompact(mem.SwapUsed), humanBytesCompact(mem.SwapTotal))
 		lines = append(lines, fmt.Sprintf("Swap   %s  %5.1f%% %s", progressBar(swapPercent), swapPercent, swapText))
 
 		lines = append(lines, fmt.Sprintf("Total  %s / %s", humanBytes(mem.Used), humanBytes(mem.Total)))
@@ -382,7 +361,7 @@ func formatDiskLine(label string, d DiskStatus) string {
 	bar := progressBar(d.UsedPercent)
 	used := humanBytesShort(d.Used)
 	total := humanBytesShort(d.Total)
-	return fmt.Sprintf("%-6s %s  %5.1f%% (%s/%s)", label, bar, d.UsedPercent, used, total)
+	return fmt.Sprintf("%-6s %s  %5.1f%%, %s/%s", label, bar, d.UsedPercent, used, total)
 }
 
 func ioBar(rate float64) string {
@@ -417,6 +396,22 @@ func renderProcessCard(procs []ProcessInfo) cardData {
 	return cardData{icon: iconProcs, title: "Processes", lines: lines}
 }
 
+func buildCards(m MetricsSnapshot, width int) []cardData {
+	cards := []cardData{
+		renderCPUCard(m.CPU, m.Thermal),
+		renderMemoryCard(m.Memory),
+		renderDiskCard(m.Disks, m.DiskIO),
+		renderBatteryCard(m.Batteries, m.Thermal),
+		renderProcessCard(m.TopProcesses),
+		renderNetworkCard(m.Network, m.NetworkHistory, m.Proxy, width),
+	}
+	// Sensors card disabled - redundant with CPU temp
+	// if hasSensorData(m.Sensors) {
+	// 	cards = append(cards, renderSensorsCard(m.Sensors))
+	// }
+	return cards
+}
+
 func miniBar(percent float64) string {
 	filled := min(int(percent/20), 5)
 	if filled < 0 {
@@ -425,7 +420,7 @@ func miniBar(percent float64) string {
 	return colorizePercent(percent, strings.Repeat("▮", filled)+strings.Repeat("▯", 5-filled))
 }
 
-func renderNetworkCard(netStats []NetworkStatus, proxy ProxyStatus) cardData {
+func renderNetworkCard(netStats []NetworkStatus, history NetworkHistory, proxy ProxyStatus, cardWidth int) cardData {
 	var lines []string
 	var totalRx, totalTx float64
 	var primaryIP string
@@ -441,10 +436,23 @@ func renderNetworkCard(netStats []NetworkStatus, proxy ProxyStatus) cardData {
 	if len(netStats) == 0 {
 		lines = []string{subtleStyle.Render("Collecting...")}
 	} else {
-		rxBar := netBar(totalRx)
-		txBar := netBar(totalTx)
-		lines = append(lines, fmt.Sprintf("Down   %s  %s", rxBar, formatRate(totalRx)))
-		lines = append(lines, fmt.Sprintf("Up     %s  %s", txBar, formatRate(totalTx)))
+		// Calculate dynamic width
+		// Layout: "Down   " (7) + graph + "  " (2) + rate (approx 10-12)
+		// Safe margin: 22 chars.
+		// We target 16 chars to match progressBar implementation for visual consistency.
+		graphWidth := cardWidth - 22
+		if graphWidth < 5 {
+			graphWidth = 5
+		}
+		if graphWidth > 16 {
+			graphWidth = 16 // Match progressBar fixed width
+		}
+
+		// sparkline graphs
+		rxSparkline := sparkline(history.RxHistory, totalRx, graphWidth)
+		txSparkline := sparkline(history.TxHistory, totalTx, graphWidth)
+		lines = append(lines, fmt.Sprintf("Down   %s  %s", rxSparkline, formatRate(totalRx)))
+		lines = append(lines, fmt.Sprintf("Up     %s  %s", txSparkline, formatRate(totalTx)))
 		// Show proxy and IP on one line.
 		var infoParts []string
 		if proxy.Enabled {
@@ -460,19 +468,54 @@ func renderNetworkCard(netStats []NetworkStatus, proxy ProxyStatus) cardData {
 	return cardData{icon: iconNetwork, title: "Network", lines: lines}
 }
 
-func netBar(rate float64) string {
-	filled := min(int(rate/2.0), 5)
-	if filled < 0 {
-		filled = 0
+// 8 levels: ▁▂▃▄▅▆▇█
+func sparkline(history []float64, current float64, width int) string {
+	blocks := []rune{'▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'}
+
+	data := make([]float64, 0, width)
+	if len(history) > 0 {
+		// Take the most recent points.
+		start := 0
+		if len(history) > width {
+			start = len(history) - width
+		}
+		data = append(data, history[start:]...)
 	}
-	bar := strings.Repeat("▮", filled) + strings.Repeat("▯", 5-filled)
-	if rate > 8 {
-		return dangerStyle.Render(bar)
+	// padding with zeros at the start
+	for len(data) < width {
+		data = append([]float64{0}, data...)
 	}
-	if rate > 3 {
-		return warnStyle.Render(bar)
+	if len(data) > width {
+		data = data[len(data)-width:]
 	}
-	return okStyle.Render(bar)
+
+	maxVal := 0.1
+	for _, v := range data {
+		if v > maxVal {
+			maxVal = v
+		}
+	}
+
+	var builder strings.Builder
+	for _, v := range data {
+		level := int((v / maxVal) * float64(len(blocks)-1))
+		if level < 0 {
+			level = 0
+		}
+		if level >= len(blocks) {
+			level = len(blocks) - 1
+		}
+		builder.WriteRune(blocks[level])
+	}
+
+	result := builder.String()
+	if current > 8 {
+		return dangerStyle.Render(result)
+	}
+	if current > 3 {
+		return warnStyle.Render(result)
+	}
+	return okStyle.Render(result)
 }
 
 func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus) cardData {
@@ -550,20 +593,6 @@ func renderBatteryCard(batts []BatteryStatus, thermal ThermalStatus) cardData {
 	}
 
 	return cardData{icon: iconBattery, title: "Power", lines: lines}
-}
-
-func renderSensorsCard(sensors []SensorReading) cardData {
-	var lines []string
-	for _, s := range sensors {
-		if s.Note != "" {
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("%-12s %s", shorten(s.Label, 12), colorizeTemp(s.Value)+s.Unit))
-	}
-	if len(lines) == 0 {
-		lines = append(lines, subtleStyle.Render("No sensors"))
-	}
-	return cardData{icon: iconSensors, title: "Sensors", lines: lines}
 }
 
 func renderCard(data cardData, width int, height int) string {

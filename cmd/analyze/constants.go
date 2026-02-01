@@ -3,18 +3,19 @@ package main
 import "time"
 
 const (
-	maxEntries            = 30
-	maxLargeFiles         = 30
-	barWidth              = 24
-	minLargeFileSize      = 100 << 20
-	defaultViewport       = 12
-	overviewCacheTTL      = 7 * 24 * time.Hour
-	overviewCacheFile     = "overview_sizes.json"
-	duTimeout             = 30 * time.Second
-	mdlsTimeout           = 5 * time.Second
-	maxConcurrentOverview = 8
-	batchUpdateSize       = 100
-	cacheModTimeGrace     = 30 * time.Minute
+	maxEntries             = 30
+	maxLargeFiles          = 20
+	barWidth               = 24
+	spotlightMinFileSize   = 100 << 20
+	largeFileWarmupMinSize = 1 << 20
+	defaultViewport        = 12
+	overviewCacheTTL       = 7 * 24 * time.Hour
+	overviewCacheFile      = "overview_sizes.json"
+	duTimeout              = 30 * time.Second
+	mdlsTimeout            = 5 * time.Second
+	maxConcurrentOverview  = 8
+	batchUpdateSize        = 100
+	cacheModTimeGrace      = 30 * time.Minute
 
 	// Worker pool limits.
 	minWorkers         = 16

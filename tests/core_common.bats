@@ -160,6 +160,32 @@ EOF
     [ "$result" = "protected" ]
 }
 
+@test "Apple apps from App Store can be uninstalled (Issue #386)" {
+    # Xcode should NOT be protected from uninstall
+    result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; should_protect_from_uninstall 'com.apple.dt.Xcode' && echo 'protected' || echo 'not-protected'")
+    [ "$result" = "not-protected" ]
+
+    # Final Cut Pro should NOT be protected from uninstall
+    result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; should_protect_from_uninstall 'com.apple.FinalCutPro' && echo 'protected' || echo 'not-protected'")
+    [ "$result" = "not-protected" ]
+
+    # GarageBand should NOT be protected from uninstall
+    result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; should_protect_from_uninstall 'com.apple.GarageBand' && echo 'protected' || echo 'not-protected'")
+    [ "$result" = "not-protected" ]
+
+    # iWork apps should NOT be protected from uninstall
+    result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; should_protect_from_uninstall 'com.apple.iWork.Pages' && echo 'protected' || echo 'not-protected'")
+    [ "$result" = "not-protected" ]
+
+    # But Safari (system app) should still be protected
+    result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; should_protect_from_uninstall 'com.apple.Safari' && echo 'protected' || echo 'not-protected'")
+    [ "$result" = "protected" ]
+
+    # And Finder should still be protected
+    result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; should_protect_from_uninstall 'com.apple.finder' && echo 'protected' || echo 'not-protected'")
+    [ "$result" = "protected" ]
+}
+
 @test "print_summary_block formats output correctly" {
     result=$(HOME="$HOME" bash --noprofile --norc -c "source '$PROJECT_ROOT/lib/core/common.sh'; print_summary_block 'success' 'Test Summary' 'Detail 1' 'Detail 2'")
     [[ "$result" == *"Test Summary"* ]]

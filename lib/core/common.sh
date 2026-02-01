@@ -79,8 +79,9 @@ update_via_homebrew() {
     if echo "$upgrade_output" | grep -q "already installed"; then
         local installed_version
         installed_version=$(brew list --versions mole 2> /dev/null | awk '{print $2}')
+        [[ -z "$installed_version" ]] && installed_version=$(mo --version 2> /dev/null | awk '/Mole version/ {print $3; exit}')
         echo ""
-        echo -e "${GREEN}${ICON_SUCCESS}${NC} Already on latest version (${installed_version:-$current_version})"
+        echo -e "${GREEN}${ICON_SUCCESS}${NC} Already on latest version, ${installed_version:-$current_version}"
         echo ""
     elif echo "$upgrade_output" | grep -q "Error:"; then
         log_error "Homebrew upgrade failed"
@@ -90,8 +91,9 @@ update_via_homebrew() {
         echo "$upgrade_output" | grep -Ev "^(==>|Updating Homebrew|Warning:)" || true
         local new_version
         new_version=$(brew list --versions mole 2> /dev/null | awk '{print $2}')
+        [[ -z "$new_version" ]] && new_version=$(mo --version 2> /dev/null | awk '/Mole version/ {print $3; exit}')
         echo ""
-        echo -e "${GREEN}${ICON_SUCCESS}${NC} Updated to latest version (${new_version:-$current_version})"
+        echo -e "${GREEN}${ICON_SUCCESS}${NC} Updated to latest version, ${new_version:-$current_version}"
         echo ""
     fi
 
@@ -119,17 +121,35 @@ remove_apps_from_dock() {
     local plist="$HOME/Library/Preferences/com.apple.dock.plist"
     [[ -f "$plist" ]] || return 0
 
-    command -v PlistBuddy > /dev/null 2>&1 || return 0
+    # PlistBuddy is at /usr/libexec/PlistBuddy on macOS
+    [[ -x /usr/libexec/PlistBuddy ]] || return 0
 
     local changed=false
     for target in "${targets[@]}"; do
         local app_path="$target"
-        # Normalize path for comparison - realpath might fail if app is already deleted
-        local full_path
-        full_path=$(cd "$(dirname "$app_path")" 2> /dev/null && pwd || echo "")
-        [[ -n "$full_path" ]] && full_path="$full_path/$(basename "$app_path")"
+        local full_path=""
 
-        # URL-encode the path for matching against Dock URLs (spaces -> %20)
+        if [[ "$app_path" =~ [[:cntrl:]] ]]; then
+            debug_log "Skipping dock removal for path with control chars: $app_path"
+            continue
+        fi
+
+        if [[ -e "$app_path" ]]; then
+            if full_path=$(cd "$(dirname "$app_path")" 2> /dev/null && pwd); then
+                full_path="$full_path/$(basename "$app_path")"
+            else
+                continue
+            fi
+        else
+            case "$app_path" in
+                ~/*) full_path="$HOME/${app_path#~/}" ;;
+                /*) full_path="$app_path" ;;
+                *) continue ;;
+            esac
+        fi
+
+        [[ -z "$full_path" ]] && continue
+
         local encoded_path="${full_path// /%20}"
 
         # Find the index of the app in persistent-apps

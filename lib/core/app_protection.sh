@@ -19,21 +19,133 @@ fi
 
 # Application Management
 
-# Critical system components protected from uninstallation
-readonly SYSTEM_CRITICAL_BUNDLES=(
-    "com.apple.*" # System essentials
+# ============================================================================
+# Performance Note:
+# - SYSTEM_CRITICAL_BUNDLES_FAST: Fast wildcard patterns for cleanup operations
+# - SYSTEM_CRITICAL_BUNDLES: Detailed list for uninstall protection (lazy-loaded)
+# ============================================================================
+
+# Fast patterns for cleanup operations (used by should_protect_data)
+# These wildcards provide adequate protection with minimal performance impact
+readonly SYSTEM_CRITICAL_BUNDLES_FAST=(
+    "com.apple.*"
     "loginwindow"
     "dock"
     "systempreferences"
     "finder"
     "safari"
+    "backgroundtaskmanagement*"
+    "keychain*"
+    "security*"
+    "bluetooth*"
+    "wifi*"
+    "network*"
+    "tcc"
+    "notification*"
+    "accessibility*"
+    "universalaccess*"
+    "HIToolbox*"
+    "textinput*"
+    "TextInput*"
+    "keyboard*"
+    "Keyboard*"
+    "inputsource*"
+    "InputSource*"
+    "keylayout*"
+    "KeyLayout*"
+    "GlobalPreferences"
+    ".GlobalPreferences"
+    "org.pqrs.Karabiner*"
+)
+
+# Detailed list for uninstall protection
+# Critical system components protected from uninstallation
+# Note: We explicitly list system components instead of using "com.apple.*" wildcard
+# to allow uninstallation of user-installed Apple apps (Xcode, Final Cut Pro, etc.)
+readonly SYSTEM_CRITICAL_BUNDLES=(
+    # Core system applications (in /System/Applications/)
+    "com.apple.finder"
+    "com.apple.dock"
+    "com.apple.Safari"
+    "com.apple.mail"
+    "com.apple.systempreferences"
+    "com.apple.SystemSettings"
     "com.apple.Settings*"
-    "com.apple.SystemSettings*"
     "com.apple.controlcenter*"
+    "com.apple.Spotlight"
+    "com.apple.notificationcenterui"
+    "com.apple.loginwindow"
+    "com.apple.Preview"
+    "com.apple.TextEdit"
+    "com.apple.Notes"
+    "com.apple.reminders"
+    "com.apple.iCal"
+    "com.apple.AddressBook"
+    "com.apple.Photos"
+    "com.apple.AppStore"
+    "com.apple.calculator"
+    "com.apple.Dictionary"
+    "com.apple.ScreenSharing"
+    "com.apple.ActivityMonitor"
+    "com.apple.Console"
+    "com.apple.DiskUtility"
+    "com.apple.KeychainAccess"
+    "com.apple.DigitalColorMeter"
+    "com.apple.grapher"
+    "com.apple.Terminal"
+    "com.apple.ScriptEditor2"
+    "com.apple.VoiceOverUtility"
+    "com.apple.BluetoothFileExchange"
+    "com.apple.print.PrinterProxy"
+    "com.apple.systempreferences*"
+    "com.apple.SystemProfiler"
+    "com.apple.FontBook"
+    "com.apple.ColorSyncUtility"
+    "com.apple.audio.AudioMIDISetup"
+    "com.apple.DirectoryUtility"
+    "com.apple.NetworkUtility"
+    "com.apple.exposelauncher"
+    "com.apple.MigrateAssistant"
+    "com.apple.RAIDUtility"
+    "com.apple.BootCampAssistant"
+
+    # System services and daemons
+    "com.apple.SecurityAgent"
+    "com.apple.CoreServices*"
+    "com.apple.SystemUIServer"
     "com.apple.backgroundtaskmanagement*"
     "com.apple.loginitems*"
     "com.apple.sharedfilelist*"
     "com.apple.sfl*"
+    "com.apple.coreservices*"
+    "com.apple.metadata*"
+    "com.apple.MobileSoftwareUpdate*"
+    "com.apple.SoftwareUpdate*"
+    "com.apple.installer*"
+    "com.apple.frameworks*"
+    "com.apple.security*"
+    "com.apple.keychain*"
+    "com.apple.trustd*"
+    "com.apple.securityd*"
+    "com.apple.cloudd*"
+    "com.apple.iCloud*"
+    "com.apple.WiFi*"
+    "com.apple.airport*"
+    "com.apple.Bluetooth*"
+
+    # Input methods (system built-in)
+    "com.apple.inputmethod.*"
+    "com.apple.inputsource*"
+    "com.apple.TextInput*"
+    "com.apple.CharacterPicker*"
+    "com.apple.PressAndHold*"
+
+    # Legacy pattern-based entries (non com.apple.*)
+    "loginwindow"
+    "dock"
+    "systempreferences"
+    "finder"
+    "safari"
     "backgroundtaskmanagementagent"
     "keychain*"
     "security*"
@@ -55,11 +167,22 @@ readonly SYSTEM_CRITICAL_BUNDLES=(
     "KeyLayout*"
     "GlobalPreferences"
     ".GlobalPreferences"
-    "com.apple.inputmethod.*"
     "org.pqrs.Karabiner*"
-    "com.apple.inputsource*"
-    "com.apple.TextInputMenuAgent"
-    "com.apple.TextInputSwitcher"
+)
+
+# Apple apps that CAN be uninstalled (from App Store or developer.apple.com)
+readonly APPLE_UNINSTALLABLE_APPS=(
+    "com.apple.dt.*"      # Xcode, Instruments, FileMerge
+    "com.apple.FinalCut*" # Final Cut Pro
+    "com.apple.Motion"
+    "com.apple.Compressor"
+    "com.apple.logic*"      # Logic Pro
+    "com.apple.garageband*" # GarageBand
+    "com.apple.iMovie"
+    "com.apple.iWork.*" # Pages, Numbers, Keynote
+    "com.apple.MainStage*"
+    "com.apple.server.*"    # macOS Server
+    "com.apple.Playgrounds" # Swift Playgrounds
 )
 
 # Applications with sensitive data; protected during cleanup but removable
@@ -74,360 +197,364 @@ readonly DATA_PROTECTED_BUNDLES=(
     "*.InputMethod"
     "*IME"
 
-    # System Utilities & Cleanup Tools
-    "com.nektony.*"                 # App Cleaner & Uninstaller
-    "com.macpaw.*"                  # CleanMyMac, CleanMaster
-    "com.freemacsoft.AppCleaner"    # AppCleaner
-    "com.omnigroup.omnidisksweeper" # OmniDiskSweeper
-    "com.daisydiskapp.*"            # DaisyDisk
-    "com.tunabellysoftware.*"       # Disk Utility apps
-    "com.grandperspectiv.*"         # GrandPerspective
-    "com.binaryfruit.*"             # FusionCast
+    # System Utilities & Cleanup
+    "com.nektony.*"
+    "com.macpaw.*"
+    "com.freemacsoft.AppCleaner"
+    "com.omnigroup.omnidisksweeper"
+    "com.daisydiskapp.*"
+    "com.tunabellysoftware.*"
+    "com.grandperspectiv.*"
+    "com.binaryfruit.*"
 
-    # Password Managers & Security
-    "com.1password.*" # 1Password
-    "com.agilebits.*" # 1Password legacy
-    "com.lastpass.*"  # LastPass
-    "com.dashlane.*"  # Dashlane
-    "com.bitwarden.*" # Bitwarden
-    "com.keepassx.*"  # KeePassXC (Legacy)
-    "org.keepassx.*"  # KeePassX
-    "org.keepassxc.*" # KeePassXC
-    "com.authy.*"     # Authy
-    "com.yubico.*"    # YubiKey Manager
+    # Password Managers
+    "com.1password.*"
+    "com.agilebits.*"
+    "com.lastpass.*"
+    "com.dashlane.*"
+    "com.bitwarden.*"
+    "com.keepassx.*"
+    "org.keepassx.*"
+    "org.keepassxc.*"
+    "com.authy.*"
+    "com.yubico.*"
 
-    # Development Tools - IDEs & Editors
-    "com.jetbrains.*"              # JetBrains IDEs (IntelliJ, DataGrip, etc.)
-    "JetBrains*"                   # JetBrains Application Support folders
-    "com.microsoft.VSCode"         # Visual Studio Code
-    "com.visualstudio.code.*"      # VS Code variants
-    "com.sublimetext.*"            # Sublime Text
-    "com.sublimehq.*"              # Sublime Merge
-    "com.microsoft.VSCodeInsiders" # VS Code Insiders
-    "com.apple.dt.Xcode"           # Xcode (keep settings)
-    "com.coteditor.CotEditor"      # CotEditor
-    "com.macromates.TextMate"      # TextMate
-    "com.panic.Nova"               # Nova
-    "abnerworks.Typora"            # Typora (Markdown editor)
-    "com.uranusjr.macdown"         # MacDown
+    # IDEs & Editors
+    "com.jetbrains.*"
+    "JetBrains*"
+    "com.microsoft.VSCode"
+    "com.visualstudio.code.*"
+    "com.sublimetext.*"
+    "com.sublimehq.*"
+    "com.microsoft.VSCodeInsiders"
+    "com.apple.dt.Xcode"
+    "com.coteditor.CotEditor"
+    "com.macromates.TextMate"
+    "com.panic.Nova"
+    "abnerworks.Typora"
+    "com.uranusjr.macdown"
 
     # AI & LLM Tools
-    "com.todesktop.*"             # Cursor (often uses generic todesktop ID)
-    "Cursor"                      # Cursor App Support
-    "com.anthropic.claude*"       # Claude
-    "Claude"                      # Claude App Support
-    "com.openai.chat*"            # ChatGPT
-    "ChatGPT"                     # ChatGPT App Support
-    "com.ollama.ollama"           # Ollama
-    "Ollama"                      # Ollama App Support
-    "com.lmstudio.lmstudio"       # LM Studio
-    "LM Studio"                   # LM Studio App Support
-    "co.supertool.chatbox"        # Chatbox
-    "page.jan.jan"                # Jan
-    "com.huggingface.huggingchat" # HuggingChat
-    "Gemini"                      # Gemini
-    "com.perplexity.Perplexity"   # Perplexity
-    "com.drawthings.DrawThings"   # Draw Things
-    "com.divamgupta.diffusionbee" # DiffusionBee
-    "com.exafunction.windsurf"    # Windsurf
-    "com.quora.poe.electron"      # Poe
-    "chat.openai.com.*"           # OpenAI web wrappers
+    "com.todesktop.*"
+    "Cursor"
+    "com.anthropic.claude*"
+    "Claude"
+    "com.openai.chat*"
+    "ChatGPT"
+    "com.ollama.ollama"
+    "Ollama"
+    "com.lmstudio.lmstudio"
+    "LM Studio"
+    "co.supertool.chatbox"
+    "page.jan.jan"
+    "com.huggingface.huggingchat"
+    "Gemini"
+    "com.perplexity.Perplexity"
+    "com.drawthings.DrawThings"
+    "com.divamgupta.diffusionbee"
+    "com.exafunction.windsurf"
+    "com.quora.poe.electron"
+    "chat.openai.com.*"
 
-    # Development Tools - Database Clients
-    "com.sequelpro.*"                   # Sequel Pro
-    "com.sequel-ace.*"                  # Sequel Ace
-    "com.tinyapp.*"                     # TablePlus
-    "com.dbeaver.*"                     # DBeaver
-    "com.navicat.*"                     # Navicat
-    "com.mongodb.compass"               # MongoDB Compass
-    "com.redis.RedisInsight"            # Redis Insight
-    "com.pgadmin.pgadmin4"              # pgAdmin
-    "com.eggerapps.Sequel-Pro"          # Sequel Pro legacy
-    "com.valentina-db.Valentina-Studio" # Valentina Studio
-    "com.dbvis.DbVisualizer"            # DbVisualizer
+    # Database Clients
+    "com.sequelpro.*"
+    "com.sequel-ace.*"
+    "com.tinyapp.*"
+    "com.dbeaver.*"
+    "com.navicat.*"
+    "com.mongodb.compass"
+    "com.redis.RedisInsight"
+    "com.pgadmin.pgadmin4"
+    "com.eggerapps.Sequel-Pro"
+    "com.valentina-db.Valentina-Studio"
+    "com.dbvis.DbVisualizer"
 
-    # Development Tools - API & Network
-    "com.postmanlabs.mac"      # Postman
-    "com.konghq.insomnia"      # Insomnia
-    "com.CharlesProxy.*"       # Charles Proxy
-    "com.proxyman.*"           # Proxyman
-    "com.getpaw.*"             # Paw
-    "com.luckymarmot.Paw"      # Paw legacy
-    "com.charlesproxy.charles" # Charles
-    "com.telerik.Fiddler"      # Fiddler
-    "com.usebruno.app"         # Bruno (API client)
+    # API & Network Tools
+    "com.postmanlabs.mac"
+    "com.konghq.insomnia"
+    "com.CharlesProxy.*"
+    "com.proxyman.*"
+    "com.getpaw.*"
+    "com.luckymarmot.Paw"
+    "com.charlesproxy.charles"
+    "com.telerik.Fiddler"
+    "com.usebruno.app"
 
-    # Network Proxy & VPN Tools (pattern-based protection)
-    # Clash variants
-    "*clash*"               # All Clash variants (ClashX, ClashX Pro, Clash Verge, etc)
-    "*Clash*"               # Capitalized variants
-    "com.nssurge.surge-mac" # Surge
-    "*surge*"               # Surge variants
-    "*Surge*"               # Surge variants
-    "mihomo*"               # Mihomo Party and variants
-    "*openvpn*"             # OpenVPN Connect and variants
-    "*OpenVPN*"             # OpenVPN capitalized variants
-    "net.openvpn.*"         # OpenVPN bundle IDs
+    # Network Proxy & VPN Tools (Clash variants - use specific patterns to avoid false positives)
+    "com.clash.*"
+    "ClashX*"
+    "clash-*"
+    "Clash-*"
+    "*-clash"
+    "*-Clash"
+    "clash.*"
+    "Clash.*"
+    "clash_*"
+    "clashverge*"
+    "ClashVerge*"
+    "com.nssurge.surge-mac"
+    "*surge*"
+    "*Surge*"
+    "mihomo*"
+    "*openvpn*"
+    "*OpenVPN*"
+    "net.openvpn.*"
 
-    # Proxy Clients (Shadowsocks, V2Ray, etc)
-    "*ShadowsocksX-NG*" # ShadowsocksX-NG
-    "com.qiuyuzhou.*"   # ShadowsocksX-NG bundle
-    "*v2ray*"           # V2Ray variants
-    "*V2Ray*"           # V2Ray variants
-    "*v2box*"           # V2Box
-    "*V2Box*"           # V2Box
-    "*nekoray*"         # Nekoray
-    "*sing-box*"        # Sing-box
-    "*OneBox*"          # OneBox
-    "*hiddify*"         # Hiddify
-    "*Hiddify*"         # Hiddify
-    "*loon*"            # Loon
-    "*Loon*"            # Loon
-    "*quantumult*"      # Quantumult X
+    # Proxy Clients
+    "*ShadowsocksX-NG*"
+    "com.qiuyuzhou.*"
+    "*v2ray*"
+    "*V2Ray*"
+    "*v2box*"
+    "*V2Box*"
+    "*nekoray*"
+    "*sing-box*"
+    "*OneBox*"
+    "*hiddify*"
+    "*Hiddify*"
+    "*loon*"
+    "*Loon*"
+    "*quantumult*"
 
     # Mesh & Corporate VPNs
-    "*tailscale*"       # Tailscale
-    "io.tailscale.*"    # Tailscale bundle
-    "*zerotier*"        # ZeroTier
-    "com.zerotier.*"    # ZeroTier bundle
-    "*1dot1dot1dot1*"   # Cloudflare WARP
-    "*cloudflare*warp*" # Cloudflare WARP
+    "*tailscale*"
+    "io.tailscale.*"
+    "*zerotier*"
+    "com.zerotier.*"
+    "*1dot1dot1dot1*" # Cloudflare WARP
+    "*cloudflare*warp*"
 
     # Commercial VPNs
-    "*nordvpn*"               # NordVPN
-    "*expressvpn*"            # ExpressVPN
-    "*protonvpn*"             # ProtonVPN
-    "*surfshark*"             # Surfshark
-    "*windscribe*"            # Windscribe
-    "*mullvad*"               # Mullvad
-    "*privateinternetaccess*" # PIA
+    "*nordvpn*"
+    "*expressvpn*"
+    "*protonvpn*"
+    "*surfshark*"
+    "*windscribe*"
+    "*mullvad*"
+    "*privateinternetaccess*"
 
-    # Screensaver & Dynamic Wallpaper
-    "*Aerial*" # Aerial screensaver (all case variants)
-    "*aerial*" # Aerial lowercase
-    "*Fliqlo*" # Fliqlo screensaver (all case variants)
-    "*fliqlo*" # Fliqlo lowercase
+    # Screensaver & Wallpaper
+    "*Aerial*"
+    "*aerial*"
+    "*Fliqlo*"
+    "*fliqlo*"
 
-    # Development Tools - Git & Version Control
-    "com.github.GitHubDesktop"       # GitHub Desktop
-    "com.sublimemerge"               # Sublime Merge
-    "com.torusknot.SourceTreeNotMAS" # SourceTree
-    "com.git-tower.Tower*"           # Tower
-    "com.gitfox.GitFox"              # GitFox
-    "com.github.Gitify"              # Gitify
-    "com.fork.Fork"                  # Fork
-    "com.axosoft.gitkraken"          # GitKraken
+    # Git & Version Control
+    "com.github.GitHubDesktop"
+    "com.sublimemerge"
+    "com.torusknot.SourceTreeNotMAS"
+    "com.git-tower.Tower*"
+    "com.gitfox.GitFox"
+    "com.github.Gitify"
+    "com.fork.Fork"
+    "com.axosoft.gitkraken"
 
-    # Development Tools - Terminal & Shell
-    "com.googlecode.iterm2"  # iTerm2
-    "net.kovidgoyal.kitty"   # Kitty
-    "io.alacritty"           # Alacritty
-    "com.github.wez.wezterm" # WezTerm
-    "com.hyper.Hyper"        # Hyper
-    "com.mizage.divvy"       # Divvy
-    "com.fig.Fig"            # Fig (terminal assistant)
-    "dev.warp.Warp-Stable"   # Warp
-    "com.termius-dmg"        # Termius (SSH client)
+    # Terminal & Shell
+    "com.googlecode.iterm2"
+    "net.kovidgoyal.kitty"
+    "io.alacritty"
+    "com.github.wez.wezterm"
+    "com.hyper.Hyper"
+    "com.mizage.divvy"
+    "com.fig.Fig"
+    "dev.warp.Warp-Stable"
+    "com.termius-dmg"
 
-    # Development Tools - Docker & Virtualization
-    "com.docker.docker"             # Docker Desktop
-    "com.getutm.UTM"                # UTM
-    "com.vmware.fusion"             # VMware Fusion
-    "com.parallels.desktop.*"       # Parallels Desktop
-    "org.virtualbox.app.VirtualBox" # VirtualBox
-    "com.vagrant.*"                 # Vagrant
-    "com.orbstack.OrbStack"         # OrbStack
+    # Docker & Virtualization
+    "com.docker.docker"
+    "com.getutm.UTM"
+    "com.vmware.fusion"
+    "com.parallels.desktop.*"
+    "org.virtualbox.app.VirtualBox"
+    "com.vagrant.*"
+    "com.orbstack.OrbStack"
 
-    # System Monitoring & Performance
-    "com.bjango.istatmenus*"       # iStat Menus
-    "eu.exelban.Stats"             # Stats
-    "com.monitorcontrol.*"         # MonitorControl
-    "com.bresink.system-toolkit.*" # TinkerTool System
-    "com.mediaatelier.MenuMeters"  # MenuMeters
-    "com.activity-indicator.app"   # Activity Indicator
-    "net.cindori.sensei"           # Sensei
+    # System Monitoring
+    "com.bjango.istatmenus*"
+    "eu.exelban.Stats"
+    "com.monitorcontrol.*"
+    "com.bresink.system-toolkit.*"
+    "com.mediaatelier.MenuMeters"
+    "com.activity-indicator.app"
+    "net.cindori.sensei"
 
-    # Window Management & Productivity
-    "com.macitbetter.*"            # BetterTouchTool, BetterSnapTool
-    "com.hegenberg.*"              # BetterTouchTool legacy
-    "com.manytricks.*"             # Moom, Witch, Name Mangler, Resolutionator
-    "com.divisiblebyzero.*"        # Spectacle
-    "com.koingdev.*"               # Koingg apps
-    "com.if.Amphetamine"           # Amphetamine
-    "com.lwouis.alt-tab-macos"     # AltTab
-    "net.matthewpalmer.Vanilla"    # Vanilla
-    "com.lightheadsw.Caffeine"     # Caffeine
-    "com.contextual.Contexts"      # Contexts
-    "com.amethyst.Amethyst"        # Amethyst
-    "com.knollsoft.Rectangle"      # Rectangle
-    "com.knollsoft.Hookshot"       # Hookshot
-    "com.surteesstudios.Bartender" # Bartender
-    "com.gaosun.eul"               # eul (system monitor)
-    "com.pointum.hazeover"         # HazeOver
+    # Window Management
+    "com.macitbetter.*" # BetterTouchTool, BetterSnapTool
+    "com.hegenberg.*"
+    "com.manytricks.*" # Moom, Witch, etc.
+    "com.divisiblebyzero.*"
+    "com.koingdev.*"
+    "com.if.Amphetamine"
+    "com.lwouis.alt-tab-macos"
+    "net.matthewpalmer.Vanilla"
+    "com.lightheadsw.Caffeine"
+    "com.contextual.Contexts"
+    "com.amethyst.Amethyst"
+    "com.knollsoft.Rectangle"
+    "com.knollsoft.Hookshot"
+    "com.surteesstudios.Bartender"
+    "com.gaosun.eul"
+    "com.pointum.hazeover"
 
     # Launcher & Automation
-    "com.runningwithcrayons.Alfred"   # Alfred
-    "com.raycast.macos"               # Raycast
-    "com.blacktree.Quicksilver"       # Quicksilver
-    "com.stairways.keyboardmaestro.*" # Keyboard Maestro
-    "com.manytricks.Butler"           # Butler
-    "com.happenapps.Quitter"          # Quitter
-    "com.pilotmoon.scroll-reverser"   # Scroll Reverser
-    "org.pqrs.Karabiner-Elements"     # Karabiner-Elements
-    "com.apple.Automator"             # Automator (system, but keep user workflows)
+    "com.runningwithcrayons.Alfred"
+    "com.raycast.macos"
+    "com.blacktree.Quicksilver"
+    "com.stairways.keyboardmaestro.*"
+    "com.manytricks.Butler"
+    "com.happenapps.Quitter"
+    "com.pilotmoon.scroll-reverser"
+    "org.pqrs.Karabiner-Elements"
+    "com.apple.Automator"
 
-    # Note-Taking & Documentation
-    "com.bear-writer.*"           # Bear
-    "com.typora.*"                # Typora
-    "com.ulyssesapp.*"            # Ulysses
-    "com.literatureandlatte.*"    # Scrivener
-    "com.dayoneapp.*"             # Day One
-    "notion.id"                   # Notion
-    "md.obsidian"                 # Obsidian
-    "com.logseq.logseq"           # Logseq
-    "com.evernote.Evernote"       # Evernote
-    "com.onenote.mac"             # OneNote
-    "com.omnigroup.OmniOutliner*" # OmniOutliner
-    "net.shinyfrog.bear"          # Bear legacy
-    "com.goodnotes.GoodNotes"     # GoodNotes
-    "com.marginnote.MarginNote*"  # MarginNote
-    "com.roamresearch.*"          # Roam Research
-    "com.reflect.ReflectApp"      # Reflect
-    "com.inkdrop.*"               # Inkdrop
+    # Note-Taking
+    "com.bear-writer.*"
+    "com.typora.*"
+    "com.ulyssesapp.*"
+    "com.literatureandlatte.*"
+    "com.dayoneapp.*"
+    "notion.id"
+    "md.obsidian"
+    "com.logseq.logseq"
+    "com.evernote.Evernote"
+    "com.onenote.mac"
+    "com.omnigroup.OmniOutliner*"
+    "net.shinyfrog.bear"
+    "com.goodnotes.GoodNotes"
+    "com.marginnote.MarginNote*"
+    "com.roamresearch.*"
+    "com.reflect.ReflectApp"
+    "com.inkdrop.*"
 
-    # Design & Creative Tools
-    "com.adobe.*"             # Adobe Creative Suite
-    "com.bohemiancoding.*"    # Sketch
-    "com.figma.*"             # Figma
-    "com.framerx.*"           # Framer
-    "com.zeplin.*"            # Zeplin
-    "com.invisionapp.*"       # InVision
-    "com.principle.*"         # Principle
-    "com.pixelmatorteam.*"    # Pixelmator
-    "com.affinitydesigner.*"  # Affinity Designer
-    "com.affinityphoto.*"     # Affinity Photo
-    "com.affinitypublisher.*" # Affinity Publisher
-    "com.linearity.curve"     # Linearity Curve
-    "com.canva.CanvaDesktop"  # Canva
-    "com.maxon.cinema4d"      # Cinema 4D
-    "com.autodesk.*"          # Autodesk products
-    "com.sketchup.*"          # SketchUp
+    # Design & Creative
+    "com.adobe.*"
+    "com.bohemiancoding.*"
+    "com.figma.*"
+    "com.framerx.*"
+    "com.zeplin.*"
+    "com.invisionapp.*"
+    "com.principle.*"
+    "com.pixelmatorteam.*"
+    "com.affinitydesigner.*"
+    "com.affinityphoto.*"
+    "com.affinitypublisher.*"
+    "com.linearity.curve"
+    "com.canva.CanvaDesktop"
+    "com.maxon.cinema4d"
+    "com.autodesk.*"
+    "com.sketchup.*"
 
-    # Communication & Collaboration
-    "com.tencent.xinWeChat"                   # WeChat (Chinese users)
-    "com.tencent.qq"                          # QQ
-    "com.alibaba.DingTalkMac"                 # DingTalk
-    "com.alibaba.AliLang.osx"                 # AliLang (retain login/config data)
-    "com.alibaba.alilang3.osx.ShipIt"         # AliLang updater component
-    "com.alibaba.AlilangMgr.QueryNetworkInfo" # AliLang network helper
-    "us.zoom.xos"                             # Zoom
-    "com.microsoft.teams*"                    # Microsoft Teams
-    "com.slack.Slack"                         # Slack
-    "com.hnc.Discord"                         # Discord
-    "app.legcord.Legcord"                     # Legcord
-    "org.telegram.desktop"                    # Telegram
-    "ru.keepcoder.Telegram"                   # Telegram legacy
-    "net.whatsapp.WhatsApp"                   # WhatsApp
-    "com.skype.skype"                         # Skype
-    "com.cisco.webexmeetings"                 # Webex
-    "com.ringcentral.RingCentral"             # RingCentral
-    "com.readdle.smartemail-Mac"              # Spark Email
-    "com.airmail.*"                           # Airmail
-    "com.postbox-inc.postbox"                 # Postbox
-    "com.tinyspeck.slackmacgap"               # Slack legacy
+    # Communication
+    "com.tencent.xinWeChat"
+    "com.tencent.qq"
+    "com.alibaba.DingTalkMac"
+    "com.alibaba.AliLang.osx"
+    "com.alibaba.alilang3.osx.ShipIt"
+    "com.alibaba.AlilangMgr.QueryNetworkInfo"
+    "us.zoom.xos"
+    "com.microsoft.teams*"
+    "com.slack.Slack"
+    "com.hnc.Discord"
+    "app.legcord.Legcord"
+    "org.telegram.desktop"
+    "ru.keepcoder.Telegram"
+    "net.whatsapp.WhatsApp"
+    "com.skype.skype"
+    "com.cisco.webexmeetings"
+    "com.ringcentral.RingCentral"
+    "com.readdle.smartemail-Mac"
+    "com.airmail.*"
+    "com.postbox-inc.postbox"
+    "com.tinyspeck.slackmacgap"
 
-    # Task Management & Productivity
-    "com.omnigroup.OmniFocus*" # OmniFocus
-    "com.culturedcode.*"       # Things
-    "com.todoist.*"            # Todoist
-    "com.any.do.*"             # Any.do
-    "com.ticktick.*"           # TickTick
-    "com.microsoft.to-do"      # Microsoft To Do
-    "com.trello.trello"        # Trello
-    "com.asana.nativeapp"      # Asana
-    "com.clickup.*"            # ClickUp
-    "com.monday.desktop"       # Monday.com
-    "com.airtable.airtable"    # Airtable
-    "com.notion.id"            # Notion (also note-taking)
-    "com.linear.linear"        # Linear
+    # Task Management
+    "com.omnigroup.OmniFocus*"
+    "com.culturedcode.*"
+    "com.todoist.*"
+    "com.any.do.*"
+    "com.ticktick.*"
+    "com.microsoft.to-do"
+    "com.trello.trello"
+    "com.asana.nativeapp"
+    "com.clickup.*"
+    "com.monday.desktop"
+    "com.airtable.airtable"
+    "com.notion.id"
+    "com.linear.linear"
 
     # File Transfer & Sync
-    "com.panic.transmit*"            # Transmit (FTP/SFTP)
-    "com.binarynights.ForkLift*"     # ForkLift
-    "com.noodlesoft.Hazel"           # Hazel
-    "com.cyberduck.Cyberduck"        # Cyberduck
-    "io.filezilla.FileZilla"         # FileZilla
-    "com.apple.Xcode.CloudDocuments" # Xcode Cloud Documents
-    "com.synology.*"                 # Synology apps
+    "com.panic.transmit*"
+    "com.binarynights.ForkLift*"
+    "com.noodlesoft.Hazel"
+    "com.cyberduck.Cyberduck"
+    "io.filezilla.FileZilla"
+    "com.apple.Xcode.CloudDocuments"
+    "com.synology.*"
 
-    # Cloud Storage & Backup (Issue #204)
-    "com.dropbox.*"              # Dropbox
-    "com.getdropbox.*"           # Dropbox legacy
-    "*dropbox*"                  # Dropbox helpers/updaters
-    "ws.agile.*"                 # 1Password sync helpers
-    "com.backblaze.*"            # Backblaze
-    "*backblaze*"                # Backblaze helpers
-    "com.box.desktop*"           # Box
-    "*box.desktop*"              # Box helpers
-    "com.microsoft.OneDrive*"    # Microsoft OneDrive
-    "com.microsoft.SyncReporter" # OneDrive sync reporter
-    "*OneDrive*"                 # OneDrive helpers/updaters
-    "com.google.GoogleDrive"     # Google Drive
-    "com.google.keystone*"       # Google updaters (Drive, Chrome, etc.)
-    "*GoogleDrive*"              # Google Drive helpers
-    "com.amazon.drive"           # Amazon Drive
-    "com.apple.bird"             # iCloud Drive daemon
-    "com.apple.CloudDocs*"       # iCloud Documents
-    "com.displaylink.*"          # DisplayLink
-    "com.fujitsu.pfu.ScanSnap*"  # ScanSnap
-    "com.citrix.*"               # Citrix Workspace
-    "org.xquartz.*"              # XQuartz
-    "us.zoom.updater*"           # Zoom updaters
-    "com.DigiDNA.iMazing*"       # iMazing
-    "com.shirtpocket.*"          # SuperDuper backup
-    "homebrew.mxcl.*"            # Homebrew services
+    # Cloud Storage & Backup
+    "com.dropbox.*"
+    "com.getdropbox.*"
+    "*dropbox*"
+    "ws.agile.*"
+    "com.backblaze.*"
+    "*backblaze*"
+    "com.box.desktop*"
+    "*box.desktop*"
+    "com.microsoft.OneDrive*"
+    "com.microsoft.SyncReporter"
+    "*OneDrive*"
+    "com.google.GoogleDrive"
+    "com.google.keystone*"
+    "*GoogleDrive*"
+    "com.amazon.drive"
+    "com.apple.bird"
+    "com.apple.CloudDocs*"
+    "com.displaylink.*"
+    "com.fujitsu.pfu.ScanSnap*"
+    "com.citrix.*"
+    "org.xquartz.*"
+    "us.zoom.updater*"
+    "com.DigiDNA.iMazing*"
+    "com.shirtpocket.*"
+    "homebrew.mxcl.*"
 
     # Screenshot & Recording
-    "com.cleanshot.*"                   # CleanShot X
-    "com.xnipapp.xnip"                  # Xnip
-    "com.reincubate.camo"               # Camo
-    "com.tunabellysoftware.ScreenFloat" # ScreenFloat
-    "net.telestream.screenflow*"        # ScreenFlow
-    "com.techsmith.snagit*"             # Snagit
-    "com.techsmith.camtasia*"           # Camtasia
-    "com.obsidianapp.screenrecorder"    # Screen Recorder
-    "com.kap.Kap"                       # Kap
-    "com.getkap.*"                      # Kap legacy
-    "com.linebreak.CloudApp"            # CloudApp
-    "com.droplr.droplr-mac"             # Droplr
+    "com.cleanshot.*"
+    "com.xnipapp.xnip"
+    "com.reincubate.camo"
+    "com.tunabellysoftware.ScreenFloat"
+    "net.telestream.screenflow*"
+    "com.techsmith.snagit*"
+    "com.techsmith.camtasia*"
+    "com.obsidianapp.screenrecorder"
+    "com.kap.Kap"
+    "com.getkap.*"
+    "com.linebreak.CloudApp"
+    "com.droplr.droplr-mac"
 
     # Media & Entertainment
-    "com.spotify.client"       # Spotify
-    "com.apple.Music"          # Apple Music
-    "com.apple.podcasts"       # Apple Podcasts
-    "com.apple.BKAgentService" # Apple Books (Agent)
-    "com.apple.iBooksX"        # Apple Books
-    "com.apple.iBooks"         # Apple Books (Legacy)
-    "com.apple.FinalCutPro"    # Final Cut Pro
-    "com.apple.Motion"         # Motion
-    "com.apple.Compressor"     # Compressor
-    "com.blackmagic-design.*"  # DaVinci Resolve
-    "com.colliderli.iina"      # IINA
-    "org.videolan.vlc"         # VLC
-    "io.mpv"                   # MPV
-    "com.noodlesoft.Hazel"     # Hazel (automation)
-    "tv.plex.player.desktop"   # Plex
-    "com.netease.163music"     # NetEase Music
+    "com.spotify.client"
+    "com.apple.Music"
+    "com.apple.podcasts"
+    "com.apple.BKAgentService"
+    "com.apple.iBooksX"
+    "com.apple.iBooks"
+    "com.blackmagic-design.*"
+    "com.colliderli.iina"
+    "org.videolan.vlc"
+    "io.mpv"
+    "tv.plex.player.desktop"
+    "com.netease.163music"
 
-    # Web Browsers (protect complex storage like IndexedDB, localStorage)
-    "Firefox"       # Firefox Application Support
-    "org.mozilla.*" # Firefox bundle IDs
+    # Web Browsers
+    "Firefox"
+    "org.mozilla.*"
 
-    # License Management & App Stores
-    "com.paddle.Paddle*"          # Paddle (license management)
-    "com.setapp.DesktopClient"    # Setapp
-    "com.devmate.*"               # DevMate (license framework)
-    "org.sparkle-project.Sparkle" # Sparkle (update framework)
+    # License & App Stores
+    "com.paddle.Paddle*"
+    "com.setapp.DesktopClient"
+    "com.devmate.*"
+    "org.sparkle-project.Sparkle"
 )
 
 # Centralized check for critical system components (case-insensitive)
@@ -467,31 +594,128 @@ bundle_matches_pattern() {
     return 1
 }
 
+# Helper to build regex from array (Bash 3.2 compatible - no namerefs)
+# $1: Variable name to store result
+# $2...: Array elements (passed as expanded list)
+build_regex_var() {
+    local var_name="$1"
+    shift
+    local regex=""
+    for pattern in "$@"; do
+        # Escape dots . -> \.
+        local p="${pattern//./\\.}"
+        # Convert * to .*
+        p="${p//\*/.*}"
+        # Start and end anchors
+        p="^${p}$"
+
+        if [[ -z "$regex" ]]; then
+            regex="$p"
+        else
+            regex="$regex|$p"
+        fi
+    done
+    eval "$var_name=\"\$regex\""
+}
+
+# Lazy-loaded regex (only built when needed)
+APPLE_UNINSTALLABLE_REGEX=""
+SYSTEM_CRITICAL_REGEX=""
+SYSTEM_CRITICAL_FAST_REGEX=""
+DATA_PROTECTED_REGEX=""
+
+_ensure_uninstall_regex() {
+    if [[ -z "$SYSTEM_CRITICAL_REGEX" ]]; then
+        build_regex_var APPLE_UNINSTALLABLE_REGEX "${APPLE_UNINSTALLABLE_APPS[@]}"
+        build_regex_var SYSTEM_CRITICAL_REGEX "${SYSTEM_CRITICAL_BUNDLES[@]}"
+    fi
+}
+
+_ensure_data_protection_regex() {
+    if [[ -z "$SYSTEM_CRITICAL_FAST_REGEX" ]]; then
+        build_regex_var SYSTEM_CRITICAL_FAST_REGEX "${SYSTEM_CRITICAL_BUNDLES_FAST[@]}"
+        build_regex_var DATA_PROTECTED_REGEX "${DATA_PROTECTED_BUNDLES[@]}"
+    fi
+}
+
 # Check if application is a protected system component
 should_protect_from_uninstall() {
     local bundle_id="$1"
-    for pattern in "${SYSTEM_CRITICAL_BUNDLES[@]}"; do
-        if bundle_matches_pattern "$bundle_id" "$pattern"; then
-            return 0
-        fi
-    done
+
+    _ensure_uninstall_regex
+
+    if [[ "$bundle_id" =~ $APPLE_UNINSTALLABLE_REGEX ]]; then
+        return 1
+    fi
+
+    if [[ "$bundle_id" =~ $SYSTEM_CRITICAL_REGEX ]]; then
+        return 0
+    fi
+
     return 1
 }
 
 # Check if application data should be protected during cleanup
 should_protect_data() {
     local bundle_id="$1"
-    # Protect both system critical and data protected bundles during cleanup
-    for pattern in "${SYSTEM_CRITICAL_BUNDLES[@]}" "${DATA_PROTECTED_BUNDLES[@]}"; do
-        if bundle_matches_pattern "$bundle_id" "$pattern"; then
+
+    case "$bundle_id" in
+        com.apple.* | loginwindow | dock | systempreferences | finder | safari)
             return 0
-        fi
-    done
+            ;;
+        backgroundtaskmanagement* | keychain* | security* | bluetooth* | wifi* | network* | tcc)
+            return 0
+            ;;
+        notification* | accessibility* | universalaccess* | HIToolbox*)
+            return 0
+            ;;
+        *inputmethod* | *InputMethod* | *IME | textinput* | TextInput*)
+            return 0
+            ;;
+        keyboard* | Keyboard* | inputsource* | InputSource* | keylayout* | KeyLayout*)
+            return 0
+            ;;
+        GlobalPreferences | .GlobalPreferences | org.pqrs.Karabiner*)
+            return 0
+            ;;
+        com.1password.* | com.agilebits.* | com.lastpass.* | com.dashlane.* | com.bitwarden.*)
+            return 0
+            ;;
+        com.jetbrains.* | JetBrains* | com.microsoft.* | com.visualstudio.*)
+            return 0
+            ;;
+        com.sublimetext.* | com.sublimehq.* | Cursor | Claude | ChatGPT | Ollama)
+            return 0
+            ;;
+        com.nssurge.* | com.v2ray.* | com.clash.* | ClashX* | Surge* | Shadowrocket* | Quantumult*)
+            return 0
+            ;;
+        clash-* | Clash-* | *-clash | *-Clash | clash.* | Clash.* | clash_* | clashverge* | ClashVerge*)
+            return 0
+            ;;
+        com.docker.* | com.getpostman.* | com.insomnia.*)
+            return 0
+            ;;
+        com.tencent.* | com.sogou.* | com.baidu.* | com.googlecode.* | im.rime.*)
+            # These might have wildcards, check detailed list
+            for pattern in "${DATA_PROTECTED_BUNDLES[@]}"; do
+                if bundle_matches_pattern "$bundle_id" "$pattern"; then
+                    return 0
+                fi
+            done
+            return 1
+            ;;
+    esac
+
+    # Most apps won't match, return early
     return 1
 }
 
 # Check if a path is protected from deletion
 # Centralized logic to protect system settings, control center, and critical apps
+#
+# In uninstall mode (MOLE_UNINSTALL_MODE=1), only system-critical components are protected.
+# Data-protected apps (VPNs, dev tools, etc.) can be uninstalled when user explicitly chooses to.
 #
 # Args: $1 - path to check
 # Returns: 0 if protected, 1 if safe to delete
@@ -577,17 +801,37 @@ should_protect_path() {
 
     # 6. Match full path against protected patterns
     # This catches things like /Users/tw93/Library/Caches/Claude when pattern is *Claude*
-    for pattern in "${SYSTEM_CRITICAL_BUNDLES[@]}" "${DATA_PROTECTED_BUNDLES[@]}"; do
-        if bundle_matches_pattern "$path" "$pattern"; then
-            return 0
-        fi
-    done
+    # In uninstall mode, only check system-critical bundles (user explicitly chose to uninstall)
+    if [[ "${MOLE_UNINSTALL_MODE:-0}" == "1" ]]; then
+        # Uninstall mode: first check if it's an uninstallable Apple app
+        for pattern in "${APPLE_UNINSTALLABLE_APPS[@]}"; do
+            if bundle_matches_pattern "$path" "$pattern"; then
+                return 1 # Can be uninstalled
+            fi
+        done
+        # Then check system-critical components
+        for pattern in "${SYSTEM_CRITICAL_BUNDLES[@]}"; do
+            if bundle_matches_pattern "$path" "$pattern"; then
+                return 0
+            fi
+        done
+    else
+        # Normal mode (cleanup): protect both system-critical and data-protected bundles
+        for pattern in "${SYSTEM_CRITICAL_BUNDLES[@]}" "${DATA_PROTECTED_BUNDLES[@]}"; do
+            if bundle_matches_pattern "$path" "$pattern"; then
+                return 0
+            fi
+        done
+    fi
 
     # 7. Check if the filename itself matches any protected patterns
-    local filename
-    filename=$(basename "$path")
-    if should_protect_data "$filename"; then
-        return 0
+    # Skip in uninstall mode - user explicitly chose to remove this app
+    if [[ "${MOLE_UNINSTALL_MODE:-0}" != "1" ]]; then
+        local filename
+        filename=$(basename "$path")
+        if should_protect_data "$filename"; then
+            return 0
+        fi
     fi
 
     return 1
@@ -643,11 +887,36 @@ is_path_whitelisted() {
 find_app_files() {
     local bundle_id="$1"
     local app_name="$2"
+
+    # Early validation: require at least one valid identifier
+    # Skip scanning if both bundle_id and app_name are invalid
+    if [[ -z "$bundle_id" || "$bundle_id" == "unknown" ]] &&
+        [[ -z "$app_name" || ${#app_name} -lt 2 ]]; then
+        return 0 # Silent return to avoid invalid scanning
+    fi
+
     local -a files_to_clean=()
 
-    # Normalize app name for matching
-    local nospace_name="${app_name// /}"
-    local underscore_name="${app_name// /_}"
+    # Normalize app name for matching - generate all common naming variants
+    # Apps use inconsistent naming: "Maestro Studio" vs "maestro-studio" vs "MaestroStudio"
+    # Note: Using tr for lowercase conversion (Bash 3.2 compatible, no ${var,,} support)
+    local nospace_name="${app_name// /}"                                               # "Maestro Studio" -> "MaestroStudio"
+    local underscore_name="${app_name// /_}"                                           # "Maestro Studio" -> "Maestro_Studio"
+    local hyphen_name="${app_name// /-}"                                               # "Maestro Studio" -> "Maestro-Studio"
+    local lowercase_name=$(echo "$app_name" | tr '[:upper:]' '[:lower:]')              # "Zed Nightly" -> "zed nightly"
+    local lowercase_nospace=$(echo "$nospace_name" | tr '[:upper:]' '[:lower:]')       # "MaestroStudio" -> "maestrostudio"
+    local lowercase_hyphen=$(echo "$hyphen_name" | tr '[:upper:]' '[:lower:]')         # "Maestro-Studio" -> "maestro-studio"
+    local lowercase_underscore=$(echo "$underscore_name" | tr '[:upper:]' '[:lower:]') # "Maestro_Studio" -> "maestro_studio"
+
+    # Extract base name by removing common version/channel suffixes
+    # "Zed Nightly" -> "Zed", "Firefox Developer Edition" -> "Firefox"
+    local base_name="$app_name"
+    local version_suffixes="Nightly|Beta|Alpha|Dev|Canary|Preview|Insider|Edge|Stable|Release|RC|LTS"
+    version_suffixes+="|Developer Edition|Technology Preview"
+    if [[ "$app_name" =~ ^(.+)[[:space:]]+(${version_suffixes})$ ]]; then
+        base_name="${BASH_REMATCH[1]}"
+    fi
+    local base_lowercase=$(echo "$base_name" | tr '[:upper:]' '[:lower:]') # "Zed" -> "zed"
 
     # Standard path patterns for user-level files
     local -a user_patterns=(
@@ -665,7 +934,6 @@ find_app_files() {
         "$HOME/Library/HTTPStorages/$bundle_id"
         "$HOME/Library/Cookies/$bundle_id.binarycookies"
         "$HOME/Library/LaunchAgents/$bundle_id.plist"
-        "$HOME/Library/LaunchDaemons/$bundle_id.plist"
         "$HOME/Library/Application Scripts/$bundle_id"
         "$HOME/Library/Services/$app_name.workflow"
         "$HOME/Library/QuickLook/$app_name.qlgenerator"
@@ -690,13 +958,35 @@ find_app_files() {
         "$HOME/.$app_name"rc
     )
 
-    # Add sanitized name variants if unique enough
+    # Add all naming variants to cover inconsistent app directory naming
+    # Issue #377: Apps create directories with various naming conventions
     if [[ ${#app_name} -gt 3 && "$app_name" =~ [[:space:]] ]]; then
         user_patterns+=(
+            # Compound naming (MaestroStudio, Maestro_Studio, Maestro-Studio)
             "$HOME/Library/Application Support/$nospace_name"
             "$HOME/Library/Caches/$nospace_name"
             "$HOME/Library/Logs/$nospace_name"
             "$HOME/Library/Application Support/$underscore_name"
+            "$HOME/Library/Application Support/$hyphen_name"
+            # Lowercase variants (maestrostudio, maestro-studio, maestro_studio)
+            "$HOME/.config/$lowercase_nospace"
+            "$HOME/.config/$lowercase_hyphen"
+            "$HOME/.config/$lowercase_underscore"
+            "$HOME/.local/share/$lowercase_nospace"
+            "$HOME/.local/share/$lowercase_hyphen"
+            "$HOME/.local/share/$lowercase_underscore"
+        )
+    fi
+
+    # Add base name variants for versioned apps (e.g., "Zed Nightly" -> check for "zed")
+    if [[ "$base_name" != "$app_name" && ${#base_name} -gt 2 ]]; then
+        user_patterns+=(
+            "$HOME/Library/Application Support/$base_name"
+            "$HOME/Library/Caches/$base_name"
+            "$HOME/Library/Logs/$base_name"
+            "$HOME/.config/$base_lowercase"
+            "$HOME/.local/share/$base_lowercase"
+            "$HOME/.$base_lowercase"
         )
     fi
 
@@ -740,17 +1030,26 @@ find_app_files() {
         fi
     fi
 
-    # Launch Agents and Daemons by name (special handling)
-    if [[ ${#app_name} -gt 3 ]]; then
-        if [[ -d ~/Library/LaunchAgents ]]; then
+    # Launch Agents by name (special handling)
+    # Note: LaunchDaemons are system-level and handled in find_app_system_files()
+    # Minimum 5-char threshold prevents false positives (e.g., "Time" matching system agents)
+    # Short-name apps (e.g., Zoom, Arc) are still cleaned via bundle_id matching above
+    # Security: Common words are excluded to prevent matching unrelated plist files
+    if [[ ${#app_name} -ge 5 ]] && [[ -d ~/Library/LaunchAgents ]]; then
+        # Skip common words that could match many unrelated LaunchAgents
+        # These are either generic terms or names that overlap with system/common utilities
+        local common_words="Music|Notes|Photos|Finder|Safari|Preview|Calendar|Contacts|Messages|Reminders|Clock|Weather|Stocks|Books|News|Podcasts|Voice|Files|Store|System|Helper|Agent|Daemon|Service|Update|Sync|Backup|Cloud|Manager|Monitor|Server|Client|Worker|Runner|Launcher|Driver|Plugin|Extension|Widget|Utility"
+        if [[ "$app_name" =~ ^($common_words)$ ]]; then
+            debug_log "Skipping LaunchAgent name search for common word: $app_name"
+        else
             while IFS= read -r -d '' plist; do
+                local plist_name=$(basename "$plist")
+                # Skip Apple's LaunchAgents
+                if [[ "$plist_name" =~ ^com\.apple\. ]]; then
+                    continue
+                fi
                 files_to_clean+=("$plist")
-            done < <(command find ~/Library/LaunchAgents -maxdepth 1 \( -name "*$app_name*.plist" \) -print0 2> /dev/null)
-        fi
-        if [[ -d ~/Library/LaunchDaemons ]]; then
-            while IFS= read -r -d '' plist; do
-                files_to_clean+=("$plist")
-            done < <(command find ~/Library/LaunchDaemons -maxdepth 1 \( -name "*$app_name*.plist" \) -print0 2> /dev/null)
+            done < <(command find ~/Library/LaunchAgents -maxdepth 1 -name "*$app_name*.plist" -print0 2> /dev/null)
         fi
     fi
 
@@ -764,7 +1063,7 @@ find_app_files() {
 
     # 2. Android Studio (Google)
     if [[ "$app_name" =~ Android.*Studio|android.*studio ]] || [[ "$bundle_id" =~ google.*android.*studio|jetbrains.*android ]]; then
-        for d in ~/AndroidStudioProjects ~/Library/Android ~/.android ~/.gradle; do
+        for d in ~/AndroidStudioProjects ~/Library/Android ~/.android; do
             [[ -d "$d" ]] && files_to_clean+=("$d")
         done
         [[ -d ~/Library/Application\ Support/Google ]] && while IFS= read -r -d '' d; do files_to_clean+=("$d"); done < <(command find ~/Library/Application\ Support/Google -maxdepth 1 -name "AndroidStudio*" -print0 2> /dev/null)
@@ -805,8 +1104,11 @@ find_app_system_files() {
     local app_name="$2"
     local -a system_files=()
 
-    # Sanitized App Name (remove spaces)
+    # Generate all naming variants (same as find_app_files for consistency)
     local nospace_name="${app_name// /}"
+    local underscore_name="${app_name// /_}"
+    local hyphen_name="${app_name// /-}"
+    local lowercase_hyphen=$(echo "$hyphen_name" | tr '[:upper:]' '[:lower:]')
 
     # Standard system path patterns
     local -a system_patterns=(
@@ -832,11 +1134,16 @@ find_app_system_files() {
         "/Library/Caches/$app_name"
     )
 
+    # Add all naming variants for apps with spaces in name
     if [[ ${#app_name} -gt 3 && "$app_name" =~ [[:space:]] ]]; then
         system_patterns+=(
             "/Library/Application Support/$nospace_name"
             "/Library/Caches/$nospace_name"
             "/Library/Logs/$nospace_name"
+            "/Library/Application Support/$underscore_name"
+            "/Library/Application Support/$hyphen_name"
+            "/Library/Caches/$hyphen_name"
+            "/Library/Caches/$lowercase_hyphen"
         )
     fi
 
@@ -904,6 +1211,13 @@ find_app_receipt_files() {
     # Skip if no bundle ID
     [[ -z "$bundle_id" || "$bundle_id" == "unknown" ]] && return 0
 
+    # Validate bundle_id format to prevent wildcard injection
+    # Only allow alphanumeric characters, dots, hyphens, and underscores
+    if [[ ! "$bundle_id" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        debug_log "Invalid bundle_id format: $bundle_id"
+        return 0
+    fi
+
     local -a receipt_files=()
     local -a bom_files=()
 
@@ -934,6 +1248,15 @@ find_app_receipt_files() {
                 if [[ "$clean_path" != /* ]]; then
                     clean_path="/$clean_path"
                 fi
+
+                # Path traversal protection: reject paths containing ..
+                if [[ "$clean_path" =~ \.\. ]]; then
+                    debug_log "Rejected path traversal in BOM: $clean_path"
+                    continue
+                fi
+
+                # Normalize path (remove duplicate slashes)
+                clean_path=$(tr -s "/" <<< "$clean_path")
 
                 # ------------------------------------------------------------------------
                 # Safety check: restrict removal to trusted paths

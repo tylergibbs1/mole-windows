@@ -34,8 +34,8 @@ clean_user_essentials
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Trash"* ]]
-    [[ "$output" == *"whitelist"* ]]
+    # Whitelist-protected items no longer show output (UX improvement in V1.22.0)
+    [[ "$output" != *"Trash"* ]]
 }
 
 @test "clean_macos_system_caches calls safe_clean for core paths" {
@@ -88,8 +88,8 @@ clean_finder_metadata
 EOF
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Finder metadata"* ]]
-    [[ "$output" == *"protected"* ]]
+    # Whitelist-protected items no longer show output (UX improvement in V1.22.0)
+    [[ "$output" == "" ]]
 }
 
 @test "check_ios_device_backups returns when no backup dir" {
@@ -103,8 +103,6 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-
-
 @test "clean_browsers calls expected cache paths" {
     run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
 set -euo pipefail
@@ -117,6 +115,7 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"Safari cache"* ]]
     [[ "$output" == *"Firefox cache"* ]]
+    [[ "$output" == *"Puppeteer browser cache"* ]]
 }
 
 @test "clean_application_support_logs skips when no access" {
@@ -143,4 +142,30 @@ EOF
 
     [ "$status" -eq 0 ]
     [[ -z "$output" ]]
+}
+
+@test "clean_user_essentials includes dotfiles in Trash cleanup" {
+    mkdir -p "$HOME/.Trash"
+    touch "$HOME/.Trash/.hidden_file"
+    touch "$HOME/.Trash/.DS_Store"
+    touch "$HOME/.Trash/regular_file.txt"
+    mkdir -p "$HOME/.Trash/.hidden_dir"
+    mkdir -p "$HOME/.Trash/regular_dir"
+
+    run bash <<'EOF'
+set -euo pipefail
+count=0
+while IFS= read -r -d '' item; do
+    ((count++)) || true
+    echo "FOUND: $(basename "$item")"
+done < <(command find "$HOME/.Trash" -mindepth 1 -maxdepth 1 -print0 2> /dev/null || true)
+echo "COUNT: $count"
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"COUNT: 5"* ]]
+    [[ "$output" == *"FOUND: .hidden_file"* ]]
+    [[ "$output" == *"FOUND: .DS_Store"* ]]
+    [[ "$output" == *"FOUND: .hidden_dir"* ]]
+    [[ "$output" == *"FOUND: regular_file.txt"* ]]
 }

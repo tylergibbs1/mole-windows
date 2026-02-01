@@ -115,3 +115,48 @@ EOF
     [[ "$output" == "ok" ]]
 }
 
+@test "clean_orphaned_system_services respects dry-run" {
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_DRY_RUN=1 bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/apps.sh"
+
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+note_activity() { :; }
+debug_log() { :; }
+
+tmp_dir="$(mktemp -d)"
+tmp_plist="$tmp_dir/com.sogou.test.plist"
+touch "$tmp_plist"
+
+sudo() {
+  if [[ "$1" == "-n" && "$2" == "true" ]]; then
+    return 0
+  fi
+  if [[ "$1" == "find" ]]; then
+    printf '%s\0' "$tmp_plist"
+    return 0
+  fi
+  if [[ "$1" == "du" ]]; then
+    echo "4 $tmp_plist"
+    return 0
+  fi
+  if [[ "$1" == "launchctl" ]]; then
+    echo "launchctl-called"
+    return 0
+  fi
+  if [[ "$1" == "rm" ]]; then
+    echo "rm-called"
+    return 0
+  fi
+  command "$@"
+}
+
+clean_orphaned_system_services
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"rm-called"* ]]
+    [[ "$output" != *"launchctl-called"* ]]
+}

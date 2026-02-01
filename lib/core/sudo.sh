@@ -60,7 +60,7 @@ _request_password() {
 
         # Show hint on first attempt about Touch ID appearing again
         if [[ $show_hint == true ]] && check_touchid_support; then
-            echo -e "${GRAY}Note: Touch ID dialog may appear once more - just cancel it${NC}" > "$tty_path"
+            echo -e "${GRAY}Note: Touch ID dialog may appear once more, just cancel it${NC}" > "$tty_path"
             show_hint=false
         fi
 
@@ -78,7 +78,7 @@ _request_password() {
             unset password
             ((attempts++))
             if [[ $attempts -lt 3 ]]; then
-                echo -e "${YELLOW}${ICON_WARNING}${NC} Password cannot be empty" > "$tty_path"
+                echo -e "${GRAY}${ICON_WARNING}${NC} Password cannot be empty" > "$tty_path"
             fi
             continue
         fi
@@ -93,7 +93,7 @@ _request_password() {
         unset password
         ((attempts++))
         if [[ $attempts -lt 3 ]]; then
-            echo -e "${YELLOW}${ICON_WARNING}${NC} Incorrect password, try again" > "$tty_path"
+            echo -e "${GRAY}${ICON_WARNING}${NC} Incorrect password, try again" > "$tty_path"
         fi
     done
 
@@ -143,7 +143,7 @@ request_sudo_access() {
     fi
 
     # Touch ID is available and not in clamshell mode
-    echo -e "${PURPLE}${ICON_ARROW}${NC} ${prompt_msg} ${GRAY}(Touch ID or password)${NC}"
+    echo -e "${PURPLE}${ICON_ARROW}${NC} ${prompt_msg} ${GRAY}, Touch ID or password${NC}"
 
     # Start sudo in background so we can monitor and control it
     sudo -v < /dev/null > /dev/null 2>&1 &

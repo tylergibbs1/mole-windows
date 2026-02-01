@@ -7,10 +7,54 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/shirou/gopsutil/v3/host"
-	"github.com/shirou/gopsutil/v3/net"
+	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/shirou/gopsutil/v4/host"
+	"github.com/shirou/gopsutil/v4/net"
 )
+
+// RingBuffer is a fixed-size circular buffer for float64 values.
+type RingBuffer struct {
+	data  []float64
+	index int // Current insert position (oldest value)
+	size  int // Number of valid elements
+	cap   int // Total capacity
+}
+
+func NewRingBuffer(capacity int) *RingBuffer {
+	return &RingBuffer{
+		data: make([]float64, capacity),
+		cap:  capacity,
+	}
+}
+
+func (rb *RingBuffer) Add(val float64) {
+	rb.data[rb.index] = val
+	rb.index = (rb.index + 1) % rb.cap
+	if rb.size < rb.cap {
+		rb.size++
+	}
+}
+
+// Slice returns the data in chronological order (oldest to newest).
+func (rb *RingBuffer) Slice() []float64 {
+	if rb.size == 0 {
+		return nil
+	}
+	res := make([]float64, rb.size)
+	if rb.size < rb.cap {
+		// Not full yet: data is at [0 : size]
+		copy(res, rb.data[:rb.size])
+	} else {
+		// Full: oldest is at index, then wrapped
+		// data: [4, 5, 1, 2, 3] (cap=5, index=2, oldest=1)
+		// want: [1, 2, 3, 4, 5]
+		// part1: [index:] -> [1, 2, 3]
+		// part2: [:index] -> [4, 5]
+		copy(res, rb.data[rb.index:])
+		copy(res[rb.cap-rb.index:], rb.data[:rb.index])
+	}
+	return res
+}
 
 type MetricsSnapshot struct {
 	CollectedAt    time.Time
@@ -22,18 +66,19 @@ type MetricsSnapshot struct {
 	HealthScore    int    // 0-100 system health score
 	HealthScoreMsg string // Brief explanation
 
-	CPU          CPUStatus
-	GPU          []GPUStatus
-	Memory       MemoryStatus
-	Disks        []DiskStatus
-	DiskIO       DiskIOStatus
-	Network      []NetworkStatus
-	Proxy        ProxyStatus
-	Batteries    []BatteryStatus
-	Thermal      ThermalStatus
-	Sensors      []SensorReading
-	Bluetooth    []BluetoothDevice
-	TopProcesses []ProcessInfo
+	CPU            CPUStatus
+	GPU            []GPUStatus
+	Memory         MemoryStatus
+	Disks          []DiskStatus
+	DiskIO         DiskIOStatus
+	Network        []NetworkStatus
+	NetworkHistory NetworkHistory
+	Proxy          ProxyStatus
+	Batteries      []BatteryStatus
+	Thermal        ThermalStatus
+	Sensors        []SensorReading
+	Bluetooth      []BluetoothDevice
+	TopProcesses   []ProcessInfo
 }
 
 type HardwareInfo struct {
@@ -105,6 +150,14 @@ type NetworkStatus struct {
 	IP        string
 }
 
+// NetworkHistory holds the global network usage history.
+type NetworkHistory struct {
+	RxHistory []float64
+	TxHistory []float64
+}
+
+const NetworkHistorySize = 120 // Increased history size for wider graph
+
 type ProxyStatus struct {
 	Enabled bool
 	Type    string // HTTP, SOCKS, System
@@ -154,17 +207,21 @@ type Collector struct {
 	lastBT   []BluetoothDevice
 
 	// Fast metrics (1s).
-	prevNet    map[string]net.IOCountersStat
-	lastNetAt  time.Time
-	lastGPUAt  time.Time
-	cachedGPU  []GPUStatus
-	prevDiskIO disk.IOCountersStat
-	lastDiskAt time.Time
+	prevNet      map[string]net.IOCountersStat
+	lastNetAt    time.Time
+	rxHistoryBuf *RingBuffer
+	txHistoryBuf *RingBuffer
+	lastGPUAt    time.Time
+	cachedGPU    []GPUStatus
+	prevDiskIO   disk.IOCountersStat
+	lastDiskAt   time.Time
 }
 
 func NewCollector() *Collector {
 	return &Collector{
-		prevNet: make(map[string]net.IOCountersStat),
+		prevNet:      make(map[string]net.IOCountersStat),
+		rxHistoryBuf: NewRingBuffer(NetworkHistorySize),
+		txHistoryBuf: NewRingBuffer(NetworkHistorySize),
 	}
 }
 
@@ -219,7 +276,8 @@ func (c *Collector) Collect() (MetricsSnapshot, error) {
 	collect(func() (err error) { proxyStats = collectProxy(); return nil })
 	collect(func() (err error) { batteryStats, _ = collectBatteries(); return nil })
 	collect(func() (err error) { thermalStats = collectThermal(); return nil })
-	collect(func() (err error) { sensorStats, _ = collectSensors(); return nil })
+	// Sensors disabled - CPU temp already shown in CPU card
+	// collect(func() (err error) { sensorStats, _ = collectSensors(); return nil })
 	collect(func() (err error) { gpuStats, err = c.collectGPU(now); return })
 	collect(func() (err error) {
 		// Bluetooth is slow; cache for 30s.
@@ -263,12 +321,16 @@ func (c *Collector) Collect() (MetricsSnapshot, error) {
 		Disks:          diskStats,
 		DiskIO:         diskIO,
 		Network:        netStats,
-		Proxy:          proxyStats,
-		Batteries:      batteryStats,
-		Thermal:        thermalStats,
-		Sensors:        sensorStats,
-		Bluetooth:      btStats,
-		TopProcesses:   topProcs,
+		NetworkHistory: NetworkHistory{
+			RxHistory: c.rxHistoryBuf.Slice(),
+			TxHistory: c.txHistoryBuf.Slice(),
+		},
+		Proxy:        proxyStats,
+		Batteries:    batteryStats,
+		Thermal:      thermalStats,
+		Sensors:      sensorStats,
+		Bluetooth:    btStats,
+		TopProcesses: topProcs,
 	}, mergeErr
 }
 

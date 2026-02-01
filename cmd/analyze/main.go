@@ -332,9 +332,9 @@ func (m *model) scheduleOverviewScans() tea.Cmd {
 	if len(pendingIndices) > 0 {
 		firstEntry := m.entries[pendingIndices[0]]
 		if len(pendingIndices) == 1 {
-			m.status = fmt.Sprintf("Scanning %s... (%d left)", firstEntry.Name, remaining)
+			m.status = fmt.Sprintf("Scanning %s..., %d left", firstEntry.Name, remaining)
 		} else {
-			m.status = fmt.Sprintf("Scanning %d directories... (%d left)", len(pendingIndices), remaining)
+			m.status = fmt.Sprintf("Scanning %d directories..., %d left", len(pendingIndices), remaining)
 		}
 	}
 
@@ -584,7 +584,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "q", "ctrl+c", "Q":
 		return m, tea.Quit
 	case "esc":
 		if m.showLargeFiles {
@@ -592,7 +592,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, tea.Quit
-	case "up", "k":
+	case "up", "k", "K":
 		if m.showLargeFiles {
 			if m.largeSelected > 0 {
 				m.largeSelected--
@@ -606,7 +606,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.offset = m.selected
 			}
 		}
-	case "down", "j":
+	case "down", "j", "J":
 		if m.showLargeFiles {
 			if m.largeSelected < len(m.largeFiles)-1 {
 				m.largeSelected++
@@ -622,12 +622,12 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.offset = m.selected - viewport + 1
 			}
 		}
-	case "enter", "right", "l":
+	case "enter", "right", "l", "L":
 		if m.showLargeFiles {
 			return m, nil
 		}
 		return m.enterSelectedDir()
-	case "b", "left", "h":
+	case "b", "left", "h", "B", "H":
 		if m.showLargeFiles {
 			m.showLargeFiles = false
 			return m, nil
@@ -679,7 +679,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("Scanned %s", humanizeBytes(m.totalSize))
 		m.scanning = false
 		return m, nil
-	case "r":
+	case "r", "R":
 		m.multiSelected = make(map[string]bool)
 		m.largeMultiSelected = make(map[string]bool)
 
@@ -728,7 +728,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.status = fmt.Sprintf("Scanned %s", humanizeBytes(m.totalSize))
 		}
-	case "o":
+	case "o", "O":
 		// Open selected entries (multi-select aware).
 		const maxBatchOpen = 20
 		if m.showLargeFiles {
@@ -736,7 +736,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if len(m.largeMultiSelected) > 0 {
 					count := len(m.largeMultiSelected)
 					if count > maxBatchOpen {
-						m.status = fmt.Sprintf("Too many items to open (max %d, selected %d)", maxBatchOpen, count)
+						m.status = fmt.Sprintf("Too many items to open, max %d, selected %d", maxBatchOpen, count)
 						return m, nil
 					}
 					for path := range m.largeMultiSelected {
@@ -761,7 +761,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.multiSelected) > 0 {
 				count := len(m.multiSelected)
 				if count > maxBatchOpen {
-					m.status = fmt.Sprintf("Too many items to open (max %d, selected %d)", maxBatchOpen, count)
+					m.status = fmt.Sprintf("Too many items to open, max %d, selected %d", maxBatchOpen, count)
 					return m, nil
 				}
 				for path := range m.multiSelected {
@@ -790,7 +790,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				if len(m.largeMultiSelected) > 0 {
 					count := len(m.largeMultiSelected)
 					if count > maxBatchReveal {
-						m.status = fmt.Sprintf("Too many items to reveal (max %d, selected %d)", maxBatchReveal, count)
+						m.status = fmt.Sprintf("Too many items to reveal, max %d, selected %d", maxBatchReveal, count)
 						return m, nil
 					}
 					for path := range m.largeMultiSelected {
@@ -815,7 +815,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if len(m.multiSelected) > 0 {
 				count := len(m.multiSelected)
 				if count > maxBatchReveal {
-					m.status = fmt.Sprintf("Too many items to reveal (max %d, selected %d)", maxBatchReveal, count)
+					m.status = fmt.Sprintf("Too many items to reveal, max %d, selected %d", maxBatchReveal, count)
 					return m, nil
 				}
 				for path := range m.multiSelected {
@@ -860,7 +860,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 							}
 						}
 					}
-					m.status = fmt.Sprintf("%d selected (%s)", count, humanizeBytes(totalSize))
+					m.status = fmt.Sprintf("%d selected, %s", count, humanizeBytes(totalSize))
 				} else {
 					m.status = fmt.Sprintf("Scanned %s", humanizeBytes(m.totalSize))
 				}
@@ -886,7 +886,7 @@ func (m model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 						}
 					}
 				}
-				m.status = fmt.Sprintf("%d selected (%s)", count, humanizeBytes(totalSize))
+				m.status = fmt.Sprintf("%d selected, %s", count, humanizeBytes(totalSize))
 			} else {
 				m.status = fmt.Sprintf("Scanned %s", humanizeBytes(m.totalSize))
 			}
@@ -971,7 +971,9 @@ func (m model) enterSelectedDir() (tea.Model, tea.Cmd) {
 	}
 	selected := m.entries[m.selected]
 	if selected.IsDir {
-		m.history = append(m.history, snapshotFromModel(m))
+		if len(m.history) == 0 || m.history[len(m.history)-1].Path != m.path {
+			m.history = append(m.history, snapshotFromModel(m))
+		}
 		m.path = selected.Path
 		m.selected = 0
 		m.offset = 0
@@ -1009,7 +1011,7 @@ func (m model) enterSelectedDir() (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.scanCmd(m.path), tickCmd())
 	}
-	m.status = fmt.Sprintf("File: %s (%s)", selected.Name, humanizeBytes(selected.Size))
+	m.status = fmt.Sprintf("File: %s, %s", selected.Name, humanizeBytes(selected.Size))
 	return m, nil
 }
 

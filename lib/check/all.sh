@@ -48,7 +48,7 @@ check_touchid_sudo() {
         fi
 
         if [[ "$is_supported" == "true" ]]; then
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Touch ID     ${YELLOW}Not configured for sudo${NC}"
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} Touch ID     ${YELLOW}Not configured for sudo${NC}"
             export TOUCHID_NOT_CONFIGURED=true
         fi
     fi
@@ -57,13 +57,12 @@ check_touchid_sudo() {
 check_rosetta() {
     # Check whitelist
     if command -v is_whitelisted > /dev/null && is_whitelisted "check_rosetta"; then return; fi
-    # Check Rosetta 2 (for Apple Silicon Macs)
+    # Check Rosetta 2 (for Apple Silicon Macs) - informational only, not auto-fixed
     if [[ "$(uname -m)" == "arm64" ]]; then
         if [[ -f "/Library/Apple/usr/share/rosetta/rosetta" ]]; then
             echo -e "  ${GREEN}✓${NC} Rosetta 2    Intel app translation ready"
         else
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Rosetta 2    ${YELLOW}Intel app support missing${NC}"
-            export ROSETTA_NOT_INSTALLED=true
+            echo -e "  ${GRAY}${ICON_EMPTY}${NC} Rosetta 2    ${GRAY}Not installed${NC}"
         fi
     fi
 }
@@ -79,7 +78,7 @@ check_git_config() {
         if [[ -n "$git_name" && -n "$git_email" ]]; then
             echo -e "  ${GREEN}✓${NC} Git          Global identity configured"
         else
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Git          ${YELLOW}User identity not set${NC}"
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} Git          ${YELLOW}User identity not set${NC}"
         fi
     fi
 }
@@ -113,13 +112,36 @@ check_filevault() {
 check_firewall() {
     # Check whitelist
     if command -v is_whitelisted > /dev/null && is_whitelisted "firewall"; then return; fi
-    # Check firewall status using socketfilterfw (more reliable than defaults on modern macOS)
+
     unset FIREWALL_DISABLED
+
+    # Check third-party firewalls first (lightweight path-based detection, no sudo required)
+    local third_party_firewall=""
+    if [[ -d "/Applications/Little Snitch.app" ]] || [[ -d "/Library/Little Snitch" ]]; then
+        third_party_firewall="Little Snitch"
+    elif [[ -d "/Applications/LuLu.app" ]]; then
+        third_party_firewall="LuLu"
+    elif [[ -d "/Applications/Radio Silence.app" ]]; then
+        third_party_firewall="Radio Silence"
+    elif [[ -d "/Applications/Hands Off!.app" ]]; then
+        third_party_firewall="Hands Off!"
+    elif [[ -d "/Applications/Murus.app" ]]; then
+        third_party_firewall="Murus"
+    elif [[ -d "/Applications/Vallum.app" ]]; then
+        third_party_firewall="Vallum"
+    fi
+
+    if [[ -n "$third_party_firewall" ]]; then
+        echo -e "  ${GREEN}✓${NC} Firewall     ${third_party_firewall} active"
+        return
+    fi
+
+    # Fall back to macOS built-in firewall check
     local firewall_output=$(sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2> /dev/null || echo "")
     if [[ "$firewall_output" == *"State = 1"* ]] || [[ "$firewall_output" == *"State = 2"* ]]; then
         echo -e "  ${GREEN}✓${NC} Firewall     Network protection enabled"
     else
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Firewall     ${YELLOW}Network protection disabled${NC}"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Firewall     ${YELLOW}Network protection disabled${NC}"
         export FIREWALL_DISABLED=true
     fi
 }
@@ -134,7 +156,7 @@ check_gatekeeper() {
             echo -e "  ${GREEN}✓${NC} Gatekeeper   App download protection active"
             unset GATEKEEPER_DISABLED
         else
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Gatekeeper   ${YELLOW}App security disabled${NC}"
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} Gatekeeper   ${YELLOW}App security disabled${NC}"
             export GATEKEEPER_DISABLED=true
         fi
     fi
@@ -149,7 +171,7 @@ check_sip() {
         if echo "$sip_status" | grep -q "enabled"; then
             echo -e "  ${GREEN}✓${NC} SIP          System integrity protected"
         else
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} SIP          ${YELLOW}System protection disabled${NC}"
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} SIP          ${YELLOW}System protection disabled${NC}"
         fi
     fi
 }
@@ -276,7 +298,7 @@ check_macos_update() {
     export MACOS_UPDATE_AVAILABLE="$updates_available"
 
     if [[ "$updates_available" == "true" ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} macOS        ${YELLOW}Update available${NC}"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} macOS        ${YELLOW}Update available${NC}"
     else
         echo -e "  ${GREEN}✓${NC} macOS        System up to date"
     fi
@@ -344,7 +366,7 @@ check_mole_update() {
         # Compare versions
         if [[ "$(printf '%s\n' "$current_version" "$latest_version" | sort -V | head -1)" == "$current_version" ]]; then
             export MOLE_UPDATE_AVAILABLE="true"
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Mole         ${YELLOW}${latest_version} available${NC} (running ${current_version})"
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} Mole         ${YELLOW}${latest_version} available${NC}, running ${current_version}"
         else
             echo -e "  ${GREEN}✓${NC} Mole         Latest version ${current_version}"
         fi
@@ -400,15 +422,18 @@ get_macos_update_labels() {
 # ============================================================================
 
 check_disk_space() {
-    local free_gb=$(command df -H / | awk 'NR==2 {print $4}' | sed 's/G//')
-    local free_num=$(echo "$free_gb" | tr -d 'G' | cut -d'.' -f1)
+    # Use df -k to get KB values (always numeric), then calculate GB via math
+    # This avoids unit suffix parsing issues (df -H can return MB or GB)
+    local free_kb=$(command df -k / | awk 'NR==2 {print $4}')
+    local free_gb=$(awk "BEGIN {printf \"%.1f\", $free_kb / 1048576}")
+    local free_num=$(awk "BEGIN {printf \"%d\", $free_kb / 1048576}")
 
     export DISK_FREE_GB=$free_num
 
     if [[ $free_num -lt 20 ]]; then
-        echo -e "  ${RED}✗${NC} Disk Space   ${RED}${free_gb}GB free${NC} (Critical)"
+        echo -e "  ${RED}✗${NC} Disk Space   ${RED}${free_gb}GB free${NC}, Critical"
     elif [[ $free_num -lt 50 ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Disk Space   ${YELLOW}${free_gb}GB free${NC} (Low)"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Disk Space   ${YELLOW}${free_gb}GB free${NC}, Low"
     else
         echo -e "  ${GREEN}✓${NC} Disk Space   ${free_gb}GB free"
     fi
@@ -452,9 +477,9 @@ check_memory_usage() {
     ((used_percent < 0)) && used_percent=0
 
     if [[ $used_percent -gt 90 ]]; then
-        echo -e "  ${RED}✗${NC} Memory       ${RED}${used_percent}% used${NC} (Critical)"
+        echo -e "  ${RED}✗${NC} Memory       ${RED}${used_percent}% used${NC}, Critical"
     elif [[ $used_percent -gt 80 ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Memory       ${YELLOW}${used_percent}% used${NC} (High)"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Memory       ${YELLOW}${used_percent}% used${NC}, High"
     else
         echo -e "  ${GREEN}✓${NC} Memory       ${used_percent}% used"
     fi
@@ -484,7 +509,7 @@ check_login_items() {
     fi
 
     if [[ $login_items_count -gt 15 ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Login Items  ${YELLOW}${login_items_count} apps${NC}"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Login Items  ${YELLOW}${login_items_count} apps${NC}"
     elif [[ $login_items_count -gt 0 ]]; then
         echo -e "  ${GREEN}✓${NC} Login Items  ${login_items_count} apps"
     else
@@ -548,9 +573,9 @@ check_cache_size() {
     local cache_size_int=$(echo "$cache_size_gb" | cut -d'.' -f1)
 
     if [[ $cache_size_int -gt 10 ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Cache Size   ${YELLOW}${cache_size_gb}GB${NC} cleanable"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Cache Size   ${YELLOW}${cache_size_gb}GB${NC} cleanable"
     elif [[ $cache_size_int -gt 5 ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Cache Size   ${YELLOW}${cache_size_gb}GB${NC} cleanable"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Cache Size   ${YELLOW}${cache_size_gb}GB${NC} cleanable"
     else
         echo -e "  ${GREEN}✓${NC} Cache Size   ${cache_size_gb}GB"
     fi
@@ -568,7 +593,7 @@ check_swap_usage() {
             if [[ "$swap_used" == *"G"* ]]; then
                 local swap_gb=${swap_num%.*}
                 if [[ $swap_gb -gt 2 ]]; then
-                    echo -e "  ${YELLOW}${ICON_WARNING}${NC} Swap Usage   ${YELLOW}${swap_used}${NC} (High)"
+                    echo -e "  ${GRAY}${ICON_WARNING}${NC} Swap Usage   ${YELLOW}${swap_used}${NC}, High"
                 else
                     echo -e "  ${GREEN}✓${NC} Swap Usage   ${swap_used}"
                 fi

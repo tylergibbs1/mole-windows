@@ -22,7 +22,7 @@ check_tcc_permissions() {
         echo ""
         echo -e "${BLUE}First-time setup${NC}"
         echo -e "${GRAY}macOS will request permissions to access Library folders.${NC}"
-        echo -e "${GRAY}You may see ${GREEN}${#tcc_dirs[@]} permission dialogs${NC}${GRAY} - please approve them all.${NC}"
+        echo -e "${GRAY}You may see ${GREEN}${#tcc_dirs[@]} permission dialogs${NC}${GRAY}, please approve them all.${NC}"
         echo ""
         echo -ne "${PURPLE}${ICON_ARROW}${NC} Press ${GREEN}Enter${NC} to continue: "
         read -r
@@ -75,12 +75,12 @@ clean_service_worker_cache() {
         local cleaned_mb=$((cleaned_size / 1024))
         if [[ "$DRY_RUN" != "true" ]]; then
             if [[ $protected_count -gt 0 ]]; then
-                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $browser_name Service Worker (${cleaned_mb}MB, ${protected_count} protected)"
+                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $browser_name Service Worker, ${cleaned_mb}MB, ${protected_count} protected"
             else
-                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $browser_name Service Worker (${cleaned_mb}MB)"
+                echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $browser_name Service Worker, ${cleaned_mb}MB"
             fi
         else
-            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $browser_name Service Worker (would clean ${cleaned_mb}MB, ${protected_count} protected)"
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $browser_name Service Worker, would clean ${cleaned_mb}MB, ${protected_count} protected"
         fi
         note_activity
         if [[ "$spinner_was_running" == "true" ]]; then

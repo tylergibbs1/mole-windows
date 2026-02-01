@@ -14,7 +14,7 @@ usage() {
 Usage: ./scripts/check.sh [--format|--no-format]
 
 Options:
-  --format     Apply formatting fixes only (shfmt, gofmt)
+  --format     Apply formatting fixes only, shfmt, gofmt
   --no-format  Skip formatting and run checks only
   --help     Show this help
 EOF
@@ -55,7 +55,7 @@ readonly ICON_ERROR="☻"
 readonly ICON_WARNING="●"
 readonly ICON_LIST="•"
 
-echo -e "${BLUE}=== Mole Check (${MODE}) ===${NC}\n"
+echo -e "${BLUE}=== Mole Check, ${MODE} ===${NC}\n"
 
 SHELL_FILES=$(find . -type f \( -name "*.sh" -o -name "mole" \) \
     -not -path "./.git/*" \
@@ -75,11 +75,11 @@ if [[ "$MODE" == "format" ]]; then
     fi
 
     if command -v goimports > /dev/null 2>&1; then
-        echo -e "${YELLOW}Formatting Go code (goimports)...${NC}"
+        echo -e "${YELLOW}Formatting Go code, goimports...${NC}"
         goimports -w -local github.com/tw93/Mole ./cmd
         echo -e "${GREEN}${ICON_SUCCESS} Go formatting complete${NC}\n"
     elif command -v go > /dev/null 2>&1; then
-        echo -e "${YELLOW}Formatting Go code (gofmt)...${NC}"
+        echo -e "${YELLOW}Formatting Go code, gofmt...${NC}"
         gofmt -w ./cmd
         echo -e "${GREEN}${ICON_SUCCESS} Go formatting complete${NC}\n"
     else
@@ -100,11 +100,11 @@ if [[ "$MODE" != "check" ]]; then
     fi
 
     if command -v goimports > /dev/null 2>&1; then
-        echo -e "${YELLOW}2. Formatting Go code (goimports)...${NC}"
+        echo -e "${YELLOW}2. Formatting Go code, goimports...${NC}"
         goimports -w -local github.com/tw93/Mole ./cmd
         echo -e "${GREEN}${ICON_SUCCESS} Go formatting applied${NC}\n"
     elif command -v go > /dev/null 2>&1; then
-        echo -e "${YELLOW}2. Formatting Go code (gofmt)...${NC}"
+        echo -e "${YELLOW}2. Formatting Go code, gofmt...${NC}"
         gofmt -w ./cmd
         echo -e "${GREEN}${ICON_SUCCESS} Go formatting applied${NC}\n"
     fi
@@ -148,18 +148,18 @@ fi
 
 echo -e "${YELLOW}5. Running syntax check...${NC}"
 if ! bash -n mole; then
-    echo -e "${RED}${ICON_ERROR} Syntax check failed (mole)${NC}\n"
+    echo -e "${RED}${ICON_ERROR} Syntax check failed, mole${NC}\n"
     exit 1
 fi
 for script in bin/*.sh; do
     if ! bash -n "$script"; then
-        echo -e "${RED}${ICON_ERROR} Syntax check failed ($script)${NC}\n"
+        echo -e "${RED}${ICON_ERROR} Syntax check failed, $script${NC}\n"
         exit 1
     fi
 done
 find lib -name "*.sh" | while read -r script; do
     if ! bash -n "$script"; then
-        echo -e "${RED}${ICON_ERROR} Syntax check failed ($script)${NC}\n"
+        echo -e "${RED}${ICON_ERROR} Syntax check failed, $script${NC}\n"
         exit 1
     fi
 done

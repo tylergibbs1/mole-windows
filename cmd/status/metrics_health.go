@@ -70,7 +70,6 @@ func calculateHealthScore(cpu CPUStatus, mem MemoryStatus, disks []DiskStatus, d
 	}
 
 	// Memory pressure penalty.
-	// Memory pressure penalty.
 	switch mem.Pressure {
 	case "warn":
 		score -= memPressureWarnPenalty
@@ -159,7 +158,8 @@ func formatUptime(secs uint64) string {
 	hours := (secs % 86400) / 3600
 	mins := (secs % 3600) / 60
 	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
+		// Only show days and hours when uptime is over 1 day (skip minutes for brevity)
+		return fmt.Sprintf("%dd %dh", days, hours)
 	}
 	if hours > 0 {
 		return fmt.Sprintf("%dh %dm", hours, mins)

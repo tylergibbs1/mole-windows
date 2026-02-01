@@ -242,15 +242,89 @@ func TestMeasureOverviewSize(t *testing.T) {
 	}
 }
 
+func TestIsHandledByMoClean(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		// Paths mo clean handles.
+		{"user caches", "/Users/test/Library/Caches/com.example", true},
+		{"user logs", "/Users/test/Library/Logs/DiagnosticReports", true},
+		{"saved app state", "/Users/test/Library/Saved Application State/com.example", true},
+		{"user trash", "/Users/test/.Trash/deleted-file", true},
+		{"diagnostic reports", "/Users/test/Library/DiagnosticReports/crash.log", true},
+
+		// Paths mo clean does NOT handle.
+		{"project node_modules", "/Users/test/project/node_modules", false},
+		{"project build", "/Users/test/project/build", false},
+		{"home directory", "/Users/test", false},
+		{"random path", "/some/random/path", false},
+		{"empty string", "", false},
+
+		// Partial matches should not trigger (case sensitive).
+		{"lowercase caches", "/users/test/library/caches/foo", false},
+		{"different trash path", "/Users/test/Trash/file", false}, // Missing dot prefix
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isHandledByMoClean(tt.path)
+			if got != tt.want {
+				t.Errorf("isHandledByMoClean(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestIsCleanableDir(t *testing.T) {
-	if !isCleanableDir("/Users/test/project/node_modules") {
-		t.Fatalf("expected node_modules to be cleanable")
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		// Empty path.
+		{"empty string", "", false},
+
+		// Project dependencies (should be cleanable).
+		{"node_modules", "/Users/test/project/node_modules", true},
+		{"nested node_modules", "/Users/test/project/packages/app/node_modules", true},
+		{"venv", "/Users/test/project/venv", true},
+		{"dot venv", "/Users/test/project/.venv", true},
+		{"pycache", "/Users/test/project/src/__pycache__", true},
+		{"build dir", "/Users/test/project/build", true},
+		{"dist dir", "/Users/test/project/dist", true},
+		{"target dir", "/Users/test/project/target", true},
+		{"next.js cache", "/Users/test/project/.next", true},
+		{"DerivedData", "/Users/test/Library/Developer/Xcode/DerivedData", true},
+		{"Pods", "/Users/test/project/ios/Pods", true},
+		{"gradle cache", "/Users/test/project/.gradle", true},
+		{"coverage", "/Users/test/project/coverage", true},
+		{"terraform", "/Users/test/infra/.terraform", true},
+
+		// Paths handled by mo clean (should NOT be cleanable).
+		{"user caches", "/Users/test/Library/Caches/com.example", false},
+		{"user logs", "/Users/test/Library/Logs/app.log", false},
+		{"trash", "/Users/test/.Trash/deleted", false},
+
+		// Not in projectDependencyDirs.
+		{"src dir", "/Users/test/project/src", false},
+		{"random dir", "/Users/test/project/random", false},
+		{"home dir", "/Users/test", false},
+		{".git dir", "/Users/test/project/.git", false},
+
+		// Edge cases.
+		{"just basename node_modules", "node_modules", true},
+		{"root path", "/", false},
 	}
-	if isCleanableDir("/Users/test/Library/Caches/AppCache") {
-		t.Fatalf("Library caches should be handled by mo clean")
-	}
-	if isCleanableDir("") {
-		t.Fatalf("empty path should not be cleanable")
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isCleanableDir(tt.path)
+			if got != tt.want {
+				t.Errorf("isCleanableDir(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+		})
 	}
 }
 

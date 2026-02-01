@@ -11,24 +11,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # Batch uninstall with a single confirmation.
 
-# User data detection patterns (prompt user to backup if found).
-readonly SENSITIVE_DATA_PATTERNS=(
-    "\.warp"                               # Warp terminal configs/themes
-    "/\.config/"                           # Standard Unix config directory
-    "/themes/"                             # Theme customizations
-    "/settings/"                           # Settings directories
-    "/Application Support/[^/]+/User Data" # Chrome/Electron user data
-    "/Preferences/[^/]+\.plist"            # User preference files
-    "/Documents/"                          # User documents
-    "/\.ssh/"                              # SSH keys and configs (critical)
-    "/\.gnupg/"                            # GPG keys (critical)
-)
+# High-performance sensitive data detection (pure Bash, no subprocess)
+# Faster than grep for batch operations, especially when processing many apps
+has_sensitive_data() {
+    local files="$1"
+    [[ -z "$files" ]] && return 1
 
-# Join patterns into a single regex for grep.
-SENSITIVE_DATA_REGEX=$(
-    IFS='|'
-    echo "${SENSITIVE_DATA_PATTERNS[*]}"
-)
+    while IFS= read -r file; do
+        [[ -z "$file" ]] && continue
+
+        # Use Bash native pattern matching (faster than spawning grep)
+        case "$file" in
+            */.warp* | */.config/* | */themes/* | */settings/* | */User\ Data/* | \
+                */.ssh/* | */.gnupg/* | */Documents/* | */Preferences/*.plist | \
+                */Desktop/* | */Downloads/* | */Movies/* | */Music/* | */Pictures/* | \
+                */.password* | */.token* | */.auth* | */keychain* | \
+                */Passwords/* | */Accounts/* | */Cookies/* | \
+                */.aws/* | */.docker/config.json | */.kube/* | \
+                */credentials/* | */secrets/*)
+                return 0 # Found sensitive data
+                ;;
+        esac
+    done <<< "$files"
+
+    return 1 # Not found
+}
 
 # Decode and validate base64 file list (safe for set -e).
 decode_file_list() {
@@ -65,11 +72,19 @@ decode_file_list() {
 # Note: find_app_files() and calculate_total_size() are in lib/core/common.sh.
 
 # Stop Launch Agents/Daemons for an app.
+# Security: bundle_id is validated to be reverse-DNS format before use in find patterns
 stop_launch_services() {
     local bundle_id="$1"
     local has_system_files="${2:-false}"
 
     [[ -z "$bundle_id" || "$bundle_id" == "unknown" ]] && return 0
+
+    # Validate bundle_id format: must be reverse-DNS style (e.g., com.example.app)
+    # This prevents glob injection attacks if bundle_id contains special characters
+    if [[ ! "$bundle_id" =~ ^[a-zA-Z0-9][-a-zA-Z0-9]*(\.[a-zA-Z0-9][-a-zA-Z0-9]*)+$ ]]; then
+        debug_log "Invalid bundle_id format for LaunchAgent search: $bundle_id"
+        return 0
+    fi
 
     if [[ -d ~/Library/LaunchAgents ]]; then
         while IFS= read -r -d '' plist; do
@@ -128,6 +143,7 @@ remove_login_item() {
 }
 
 # Remove files (handles symlinks, optional sudo).
+# Security: All paths pass validate_path_for_deletion() before any deletion.
 remove_file_list() {
     local file_list="$1"
     local use_sudo="${2:-false}"
@@ -140,6 +156,12 @@ remove_file_list() {
             continue
         fi
 
+        # Symlinks are handled separately using rm (not safe_remove/safe_sudo_remove)
+        # because safe_sudo_remove() refuses symlinks entirely as a TOCTOU protection.
+        # This is safe because:
+        # 1. The path has already passed validate_path_for_deletion() above
+        # 2. rm on a symlink only removes the link itself, NOT the target
+        # 3. The symlink deletion is logged via operations.log
         if [[ -L "$file" ]]; then
             if [[ "$use_sudo" == "true" ]]; then
                 sudo rm "$file" 2> /dev/null && ((++count)) || true
@@ -168,39 +190,69 @@ batch_uninstall_applications() {
         return 0
     fi
 
+    local old_trap_int old_trap_term
+    old_trap_int=$(trap -p INT)
+    old_trap_term=$(trap -p TERM)
+
+    _restore_uninstall_traps() {
+        if [[ -n "$old_trap_int" ]]; then
+            eval "$old_trap_int"
+        else
+            trap - INT
+        fi
+        if [[ -n "$old_trap_term" ]]; then
+            eval "$old_trap_term"
+        else
+            trap - TERM
+        fi
+    }
+
+    # Trap to clean up spinner and uninstall mode on interrupt
+    trap 'stop_inline_spinner 2>/dev/null; unset MOLE_UNINSTALL_MODE; echo ""; _restore_uninstall_traps; return 130' INT TERM
+
     # Pre-scan: running apps, sudo needs, size.
     local -a running_apps=()
     local -a sudo_apps=()
     local total_estimated_size=0
     local -a app_details=()
 
+    # Cache current user outside loop
+    local current_user=$(whoami)
+
     if [[ -t 1 ]]; then start_inline_spinner "Scanning files..."; fi
     for selected_app in "${selected_apps[@]}"; do
         [[ -z "$selected_app" ]] && continue
         IFS='|' read -r _ app_path app_name bundle_id _ _ <<< "$selected_app"
 
-        # Check running app by bundle executable if available.
+        # Check running app by bundle executable if available
         local exec_name=""
-        if [[ -e "$app_path/Contents/Info.plist" ]]; then
-            exec_name=$(defaults read "$app_path/Contents/Info.plist" CFBundleExecutable 2> /dev/null || echo "")
+        local info_plist="$app_path/Contents/Info.plist"
+        if [[ -e "$info_plist" ]]; then
+            exec_name=$(defaults read "$info_plist" CFBundleExecutable 2> /dev/null || echo "")
         fi
-        local check_pattern="${exec_name:-$app_name}"
-        if pgrep -x "$check_pattern" > /dev/null 2>&1; then
+        if pgrep -qx "${exec_name:-$app_name}" 2> /dev/null; then
             running_apps+=("$app_name")
         fi
 
-        # Check if it's a Homebrew cask (deterministic: resolved path in Caskroom)
-        local cask_name=""
-        cask_name=$(get_brew_cask_name "$app_path" || echo "")
-        local is_brew_cask="false"
-        [[ -n "$cask_name" ]] && is_brew_cask="true"
+        local cask_name="" is_brew_cask="false"
+        local resolved_path=$(readlink "$app_path" 2> /dev/null || echo "")
+        if [[ "$resolved_path" == */Caskroom/* ]]; then
+            # Extract cask name using bash parameter expansion (faster than sed)
+            local tmp="${resolved_path#*/Caskroom/}"
+            cask_name="${tmp%%/*}"
+            [[ -n "$cask_name" ]] && is_brew_cask="true"
+        elif command -v get_brew_cask_name > /dev/null 2>&1; then
+            local detected_cask
+            detected_cask=$(get_brew_cask_name "$app_path" 2> /dev/null || true)
+            if [[ -n "$detected_cask" ]]; then
+                cask_name="$detected_cask"
+                is_brew_cask="true"
+            fi
+        fi
 
-        # Full file scanning for ALL apps (including Homebrew casks)
-        # brew uninstall --cask does NOT remove user data (caches, prefs, app support)
-        # Mole's value is cleaning those up, so we must scan for them
+        # Check if sudo is needed
         local needs_sudo=false
         local app_owner=$(get_file_owner "$app_path")
-        local current_user=$(whoami)
         if [[ ! -w "$(dirname "$app_path")" ]] ||
             [[ "$app_owner" == "root" ]] ||
             [[ -n "$app_owner" && "$app_owner" != "$current_user" ]]; then
@@ -230,7 +282,7 @@ batch_uninstall_applications() {
 
         # Check for sensitive user data once.
         local has_sensitive_data="false"
-        if [[ -n "$related_files" ]] && echo "$related_files" | grep -qE "$SENSITIVE_DATA_REGEX"; then
+        if has_sensitive_data "$related_files"; then
             has_sensitive_data="true"
         fi
 
@@ -260,7 +312,7 @@ batch_uninstall_applications() {
     done
 
     if [[ "$has_user_data" == "true" ]]; then
-        echo -e "${YELLOW}${ICON_WARNING}${NC} ${YELLOW}Note: Some apps contain user configurations/themes${NC}"
+        echo -e "${GRAY}${ICON_WARNING}${NC} ${YELLOW}Note: Some apps contain user configurations/themes${NC}"
         echo ""
     fi
 
@@ -270,7 +322,7 @@ batch_uninstall_applications() {
 
         local brew_tag=""
         [[ "$is_brew_cask" == "true" ]] && brew_tag=" ${CYAN}[Brew]${NC}"
-        echo -e "${BLUE}${ICON_CONFIRM}${NC} ${app_name}${brew_tag} ${GRAY}(${app_size_display})${NC}"
+        echo -e "${BLUE}${ICON_CONFIRM}${NC} ${app_name}${brew_tag} ${GRAY}, ${app_size_display}${NC}"
 
         # Show detailed file list for ALL apps (brew casks leave user data behind)
         local related_files=$(decode_file_list "$encoded_files" "$app_name")
@@ -295,7 +347,7 @@ batch_uninstall_applications() {
         while IFS= read -r file; do
             if [[ -n "$file" && -e "$file" ]]; then
                 if [[ $sys_file_count -lt $max_files ]]; then
-                    echo -e "  ${BLUE}${ICON_SOLID}${NC} System: $file"
+                    echo -e "  ${BLUE}${ICON_WARNING}${NC} System: $file"
                 fi
                 ((sys_file_count++))
             fi
@@ -315,7 +367,7 @@ batch_uninstall_applications() {
 
     echo ""
     local removal_note="Remove ${app_total} ${app_text}"
-    [[ -n "$size_display" ]] && removal_note+=" (${size_display})"
+    [[ -n "$size_display" ]] && removal_note+=", ${size_display}"
     if [[ ${#running_apps[@]} -gt 0 ]]; then
         removal_note+=" ${YELLOW}[Running]${NC}"
     fi
@@ -328,6 +380,7 @@ batch_uninstall_applications() {
         $'\e' | q | Q)
             echo ""
             echo ""
+            _restore_uninstall_traps
             return 0
             ;;
         "" | $'\n' | $'\r' | y | Y)
@@ -336,9 +389,14 @@ batch_uninstall_applications() {
         *)
             echo ""
             echo ""
+            _restore_uninstall_traps
             return 0
             ;;
     esac
+
+    # Enable uninstall mode - allows deletion of data-protected apps (VPNs, dev tools, etc.)
+    # that user explicitly chose to uninstall. System-critical components remain protected.
+    export MOLE_UNINSTALL_MODE=1
 
     # Request sudo if needed.
     if [[ ${#sudo_apps[@]} -gt 0 ]]; then
@@ -346,6 +404,7 @@ batch_uninstall_applications() {
             if ! request_sudo_access "Admin required for system apps: ${sudo_apps[*]}"; then
                 echo ""
                 log_error "Admin access denied"
+                _restore_uninstall_traps
                 return 1
             fi
         fi
@@ -388,6 +447,7 @@ batch_uninstall_applications() {
         # Stop Launch Agents/Daemons before removal.
         local has_system_files="false"
         [[ -n "$system_files" ]] && has_system_files="true"
+
         stop_launch_services "$bundle_id" "$has_system_files"
 
         # Remove from Login Items
@@ -398,34 +458,44 @@ batch_uninstall_applications() {
         fi
 
         # Remove the application only if not running.
+        # Stop spinner before any removal attempt (avoids mixed output on errors)
+        [[ -t 1 ]] && stop_inline_spinner
+
         local used_brew_successfully=false
         if [[ -z "$reason" ]]; then
             if [[ "$is_brew_cask" == "true" && -n "$cask_name" ]]; then
-                # Stop spinner before brew output
-                [[ -t 1 ]] && stop_inline_spinner
                 # Use brew_uninstall_cask helper (handles env vars, timeout, verification)
                 if brew_uninstall_cask "$cask_name" "$app_path"; then
                     used_brew_successfully=true
                 else
                     # Fallback to manual removal if brew fails
                     if [[ "$needs_sudo" == true ]]; then
-                        safe_sudo_remove "$app_path" || reason="remove failed"
+                        if ! safe_sudo_remove "$app_path"; then
+                            reason="brew failed, manual removal failed"
+                        fi
                     else
-                        safe_remove "$app_path" true || reason="remove failed"
+                        if ! safe_remove "$app_path" true; then
+                            reason="brew failed, manual removal failed"
+                        fi
                     fi
                 fi
             elif [[ "$needs_sudo" == true ]]; then
                 if ! safe_sudo_remove "$app_path"; then
                     local app_owner=$(get_file_owner "$app_path")
-                    local current_user=$(whoami)
                     if [[ -n "$app_owner" && "$app_owner" != "$current_user" && "$app_owner" != "root" ]]; then
-                        reason="owned by $app_owner"
+                        reason="owned by $app_owner, try 'sudo chown $(whoami) \"$app_path\"'"
                     else
-                        reason="permission denied"
+                        reason="permission denied, try 'mole touchid' for passwordless sudo"
                     fi
                 fi
             else
-                safe_remove "$app_path" true || reason="remove failed"
+                if ! safe_remove "$app_path" true; then
+                    if [[ ! -w "$(dirname "$app_path")" ]]; then
+                        reason="parent directory not writable"
+                    else
+                        reason="remove failed, check permissions"
+                    fi
+                fi
             fi
         fi
 
@@ -447,18 +517,23 @@ batch_uninstall_applications() {
                 fi
 
                 # ByHost preferences (machine-specific).
-                if [[ -d ~/Library/Preferences/ByHost ]]; then
-                    find ~/Library/Preferences/ByHost -maxdepth 1 -name "${bundle_id}.*.plist" -delete 2> /dev/null || true
+                if [[ -d "$HOME/Library/Preferences/ByHost" ]]; then
+                    if [[ "$bundle_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                        while IFS= read -r -d '' plist_file; do
+                            safe_remove "$plist_file" true > /dev/null || true
+                        done < <(command find "$HOME/Library/Preferences/ByHost" -maxdepth 1 -type f -name "${bundle_id}.*.plist" -print0 2> /dev/null || true)
+                    else
+                        debug_log "Skipping ByHost cleanup, invalid bundle id: $bundle_id"
+                    fi
                 fi
             fi
 
-            # Stop spinner and show success
+            # Show success
             if [[ -t 1 ]]; then
-                stop_inline_spinner
                 if [[ ${#app_details[@]} -gt 1 ]]; then
-                    echo -e "\r\033[K${GREEN}✓${NC} [$current_index/${#app_details[@]}] ${app_name}"
+                    echo -e "${GREEN}✓${NC} [$current_index/${#app_details[@]}] ${app_name}"
                 else
-                    echo -e "\r\033[K${GREEN}✓${NC} ${app_name}"
+                    echo -e "${GREEN}✓${NC} ${app_name}"
                 fi
             fi
 
@@ -469,13 +544,12 @@ batch_uninstall_applications() {
             ((total_items++))
             success_items+=("$app_name")
         else
-            # Stop spinner and show failure
+            # Show failure
             if [[ -t 1 ]]; then
-                stop_inline_spinner
                 if [[ ${#app_details[@]} -gt 1 ]]; then
-                    echo -e "\r\033[K${RED}✗${NC} [$current_index/${#app_details[@]}] ${app_name} ${GRAY}($reason)${NC}"
+                    echo -e "${ICON_ERROR} [$current_index/${#app_details[@]}] ${app_name} ${GRAY}, $reason${NC}"
                 else
-                    echo -e "\r\033[K${RED}✗${NC} ${app_name} failed: $reason"
+                    echo -e "${ICON_ERROR} ${app_name} failed: $reason"
                 fi
             fi
 
@@ -549,7 +623,7 @@ batch_uninstall_applications() {
                 still*running*) reason_summary="is still running" ;;
                 remove*failed*) reason_summary="could not be removed" ;;
                 permission*denied*) reason_summary="permission denied" ;;
-                owned*by*) reason_summary="$first_reason (try with sudo)" ;;
+                owned*by*) reason_summary="$first_reason, try with sudo" ;;
                 *) reason_summary="$first_reason" ;;
             esac
         fi
@@ -572,10 +646,20 @@ batch_uninstall_applications() {
 
     # Auto-run brew autoremove if Homebrew casks were uninstalled
     if [[ $brew_apps_removed -gt 0 ]]; then
+        # Show spinner while checking for orphaned dependencies
+        if [[ -t 1 ]]; then
+            start_inline_spinner "Checking brew dependencies..."
+        fi
+
         local autoremove_output removed_count
         autoremove_output=$(HOMEBREW_NO_ENV_HINTS=1 brew autoremove 2> /dev/null) || true
         removed_count=$(printf '%s\n' "$autoremove_output" | grep -c "^Uninstalling" || true)
         removed_count=${removed_count:-0}
+
+        if [[ -t 1 ]]; then
+            stop_inline_spinner
+        fi
+
         if [[ $removed_count -gt 0 ]]; then
             echo -e "${GREEN}${ICON_SUCCESS}${NC} Cleaned $removed_count orphaned brew dependencies"
             echo ""
@@ -606,11 +690,17 @@ batch_uninstall_applications() {
         sudo_keepalive_pid=""
     fi
 
+    # Disable uninstall mode
+    unset MOLE_UNINSTALL_MODE
+
     # Invalidate cache if any apps were successfully uninstalled.
     if [[ $success_count -gt 0 ]]; then
         local cache_file="$HOME/.cache/mole/app_scan_cache"
         rm -f "$cache_file" 2> /dev/null || true
     fi
+
+    _restore_uninstall_traps
+    unset -f _restore_uninstall_traps
 
     ((total_size_cleaned += total_size_freed))
     unset failed_items

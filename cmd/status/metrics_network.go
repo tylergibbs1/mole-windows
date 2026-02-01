@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/net"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 func (c *Collector) collectNetwork(now time.Time) ([]NetworkStatus, error) {
@@ -69,6 +69,16 @@ func (c *Collector) collectNetwork(now time.Time) ([]NetworkStatus, error) {
 	if len(result) > 3 {
 		result = result[:3]
 	}
+
+	var totalRx, totalTx float64
+	for _, r := range result {
+		totalRx += r.RxRateMBs
+		totalTx += r.TxRateMBs
+	}
+
+	// Update history using the global/aggregated stats
+	c.rxHistoryBuf.Add(totalRx)
+	c.txHistoryBuf.Add(totalTx)
 
 	return result, nil
 }

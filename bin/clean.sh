@@ -142,10 +142,6 @@ cleanup() {
 
     stop_inline_spinner 2> /dev/null || true
 
-    if [[ -t 1 ]]; then
-        printf "\r\033[K" >&2 || true
-    fi
-
     cleanup_temp_files
 
     stop_sudo_session
@@ -163,10 +159,6 @@ start_section() {
     CURRENT_SECTION="$1"
     echo ""
     echo -e "${PURPLE_BOLD}${ICON_ARROW} $1${NC}"
-
-    if [[ -t 1 ]]; then
-        MOLE_SPINNER_PREFIX="  " start_inline_spinner "Preparing..."
-    fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
         ensure_user_file "$EXPORT_LIST_FILE"
@@ -308,9 +300,6 @@ safe_clean() {
         return 0
     fi
 
-    # Always stop spinner before outputting results
-    stop_section_spinner
-
     local description
     local -a targets
 
@@ -361,6 +350,7 @@ safe_clean() {
     local show_scan_feedback=false
     if [[ ${#targets[@]} -gt 20 && -t 1 ]]; then
         show_scan_feedback=true
+        stop_section_spinner
         MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning ${#targets[@]} items..."
     fi
 
@@ -371,6 +361,7 @@ safe_clean() {
         if should_protect_path "$path"; then
             skip=true
             ((skipped_count++))
+            log_operation "clean" "SKIPPED" "$path" "protected"
         fi
 
         [[ "$skip" == "true" ]] && continue
@@ -378,6 +369,7 @@ safe_clean() {
         if is_path_whitelisted "$path"; then
             skip=true
             ((skipped_count++))
+            log_operation "clean" "SKIPPED" "$path" "whitelist"
         fi
         [[ "$skip" == "true" ]] && continue
         [[ -e "$path" ]] && existing_paths+=("$path")
@@ -387,7 +379,7 @@ safe_clean() {
         stop_section_spinner
     fi
 
-    debug_log "Cleaning: $description (${#existing_paths[@]} items)"
+    debug_log "Cleaning: $description, ${#existing_paths[@]} items"
 
     # Enhanced debug output with risk level and details
     if [[ "${MO_DEBUG:-}" == "1" && ${#existing_paths[@]} -gt 0 ]]; then
@@ -436,6 +428,8 @@ safe_clean() {
         local total_paths=${#existing_paths[@]}
         if [[ -t 1 ]]; then MOLE_SPINNER_PREFIX="  " start_inline_spinner "Scanning items..."; fi
     fi
+
+    local cleaning_spinner_started=false
 
     # For larger batches, precompute sizes in parallel for better UX/stat accuracy.
     if [[ ${#existing_paths[@]} -gt 3 ]]; then
@@ -528,6 +522,11 @@ safe_clean() {
         fi
 
         # Read results back in original order.
+        # Start spinner for cleaning phase
+        if [[ "$DRY_RUN" != "true" && ${#existing_paths[@]} -gt 0 && -t 1 ]]; then
+            MOLE_SPINNER_PREFIX="  " start_inline_spinner "Cleaning..."
+            cleaning_spinner_started=true
+        fi
         idx=0
         if [[ ${#existing_paths[@]} -gt 0 ]]; then
             for path in "${existing_paths[@]}"; do
@@ -536,12 +535,8 @@ safe_clean() {
                     read -r size count < "$result_file" 2> /dev/null || true
                     local removed=0
                     if [[ "$DRY_RUN" != "true" ]]; then
-                        if [[ -L "$path" ]]; then
-                            rm "$path" 2> /dev/null && removed=1
-                        else
-                            if safe_remove "$path" true; then
-                                removed=1
-                            fi
+                        if safe_remove "$path" true; then
+                            removed=1
                         fi
                     else
                         removed=1
@@ -564,6 +559,11 @@ safe_clean() {
         fi
 
     else
+        # Start spinner for cleaning phase (small batch)
+        if [[ "$DRY_RUN" != "true" && ${#existing_paths[@]} -gt 0 && -t 1 ]]; then
+            MOLE_SPINNER_PREFIX="  " start_inline_spinner "Cleaning..."
+            cleaning_spinner_started=true
+        fi
         local idx=0
         if [[ ${#existing_paths[@]} -gt 0 ]]; then
             for path in "${existing_paths[@]}"; do
@@ -573,12 +573,8 @@ safe_clean() {
 
                 local removed=0
                 if [[ "$DRY_RUN" != "true" ]]; then
-                    if [[ -L "$path" ]]; then
-                        rm "$path" 2> /dev/null && removed=1
-                    else
-                        if safe_remove "$path" true; then
-                            removed=1
-                        fi
+                    if safe_remove "$path" true; then
+                        removed=1
                     fi
                 else
                     removed=1
@@ -600,8 +596,8 @@ safe_clean() {
         fi
     fi
 
-    if [[ "$show_spinner" == "true" ]]; then
-        stop_section_spinner
+    if [[ "$show_spinner" == "true" || "$cleaning_spinner_started" == "true" ]]; then
+        stop_inline_spinner
     fi
 
     local permission_end=${MOLE_PERMISSION_DENIED_COUNT:-0}
@@ -610,10 +606,13 @@ safe_clean() {
         debug_log "Permission denied while cleaning: $description"
     fi
     if [[ $removal_failed_count -gt 0 && "$DRY_RUN" != "true" ]]; then
-        debug_log "Skipped $removal_failed_count items (permission denied or in use) for: $description"
+        debug_log "Skipped $removal_failed_count items, permission denied or in use, for: $description"
     fi
 
     if [[ $removed_any -eq 1 ]]; then
+        # Stop spinner before output
+        stop_section_spinner
+
         local size_human=$(bytes_to_human "$((total_size_kb * 1024))")
 
         local label="$description"
@@ -622,7 +621,7 @@ safe_clean() {
         fi
 
         if [[ "$DRY_RUN" == "true" ]]; then
-            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $label ${YELLOW}($size_human dry)${NC}"
+            echo -e "  ${YELLOW}${ICON_DRY_RUN}${NC} $label${NC}, ${YELLOW}$size_human dry${NC}"
 
             local paths_temp=$(create_temp_file)
 
@@ -673,7 +672,7 @@ safe_clean() {
                 ' | while IFS='|' read -r display_path total_size child_count; do
                     local size_human=$(bytes_to_human "$((total_size * 1024))")
                     if [[ $child_count -gt 1 ]]; then
-                        echo "$display_path  # $size_human ($child_count items)" >> "$EXPORT_LIST_FILE"
+                        echo "$display_path  # $size_human, $child_count items" >> "$EXPORT_LIST_FILE"
                     else
                         echo "$display_path  # $size_human" >> "$EXPORT_LIST_FILE"
                     fi
@@ -682,7 +681,7 @@ safe_clean() {
                 rm -f "$paths_temp"
             fi
         else
-            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $label ${GREEN}($size_human)${NC}"
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $label${NC}, ${GREEN}$size_human${NC}"
         fi
         ((files_cleaned += total_count))
         ((total_size_cleaned += total_size_kb))
@@ -694,6 +693,10 @@ safe_clean() {
 }
 
 start_cleanup() {
+    # Set current command for operation logging
+    export MOLE_CURRENT_COMMAND="clean"
+    log_operation_session_start "clean"
+
     if [[ -t 1 ]]; then
         printf '\033[2J\033[H'
     fi
@@ -702,11 +705,11 @@ start_cleanup() {
     echo ""
 
     if [[ "$DRY_RUN" != "true" && -t 0 ]]; then
-        echo -e "${GRAY}${ICON_SOLID} Use --dry-run to preview, --whitelist to manage protected paths${NC}"
+        echo -e "${GRAY}${ICON_WARNING} Use --dry-run to preview, --whitelist to manage protected paths${NC}"
     fi
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        echo -e "${YELLOW}Dry Run Mode${NC} - Preview only, no deletions"
+        echo -e "${YELLOW}Dry Run Mode${NC}, Preview only, no deletions"
         echo ""
         SYSTEM_CLEAN=false
 
@@ -727,42 +730,53 @@ EOF
     fi
 
     if [[ -t 0 ]]; then
-        echo -ne "${PURPLE}${ICON_ARROW}${NC} System caches need sudo — ${GREEN}Enter${NC} continue, ${GRAY}Space${NC} skip: "
-
-        local choice
-        choice=$(read_key)
-
-        # ESC/Q aborts, Space skips, Enter enables system cleanup.
-        if [[ "$choice" == "QUIT" ]]; then
-            echo -e " ${GRAY}Canceled${NC}"
-            exit 0
-        fi
-
-        if [[ "$choice" == "SPACE" ]]; then
-            echo -e " ${GRAY}Skipped${NC}"
+        if sudo -n true 2> /dev/null; then
+            SYSTEM_CLEAN=true
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access already available"
             echo ""
-            SYSTEM_CLEAN=false
-        elif [[ "$choice" == "ENTER" ]]; then
-            printf "\r\033[K" # Clear the prompt line
-            if ensure_sudo_session "System cleanup requires admin access"; then
-                SYSTEM_CLEAN=true
-                echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access granted"
+        else
+            echo -ne "${PURPLE}${ICON_ARROW}${NC} System caches need sudo. ${GREEN}Enter${NC} continue, ${GRAY}Space${NC} skip: "
+
+            local choice
+            choice=$(read_key)
+
+            # ESC/Q aborts, Space skips, Enter enables system cleanup.
+            if [[ "$choice" == "QUIT" ]]; then
+                echo -e " ${GRAY}Canceled${NC}"
+                exit 0
+            fi
+
+            if [[ "$choice" == "SPACE" ]]; then
+                echo -e " ${GRAY}Skipped${NC}"
                 echo ""
+                SYSTEM_CLEAN=false
+            elif [[ "$choice" == "ENTER" ]]; then
+                printf "\r\033[K" # Clear the prompt line
+                if ensure_sudo_session "System cleanup requires admin access"; then
+                    SYSTEM_CLEAN=true
+                    echo -e "${GREEN}${ICON_SUCCESS}${NC} Admin access granted"
+                    echo ""
+                else
+                    SYSTEM_CLEAN=false
+                    echo ""
+                    echo -e "${YELLOW}Authentication failed${NC}, continuing with user-level cleanup"
+                fi
             else
                 SYSTEM_CLEAN=false
+                echo -e " ${GRAY}Skipped${NC}"
                 echo ""
-                echo -e "${YELLOW}Authentication failed${NC}, continuing with user-level cleanup"
             fi
-        else
-            SYSTEM_CLEAN=false
-            echo -e " ${GRAY}Skipped${NC}"
-            echo ""
         fi
     else
-        SYSTEM_CLEAN=false
         echo ""
         echo "Running in non-interactive mode"
-        echo "  ${ICON_LIST} System-level cleanup skipped (requires interaction)"
+        if sudo -n true 2> /dev/null; then
+            SYSTEM_CLEAN=true
+            echo "  ${ICON_LIST} System-level cleanup enabled, sudo session active"
+        else
+            SYSTEM_CLEAN=false
+            echo "  ${ICON_LIST} System-level cleanup skipped, requires sudo"
+        fi
         echo "  ${ICON_LIST} User-level cleanup will proceed automatically"
         echo ""
     fi
@@ -774,7 +788,7 @@ perform_cleanup() {
     if [[ "${MOLE_TEST_MODE:-0}" == "1" ]]; then
         test_mode_enabled=true
         if [[ "$DRY_RUN" == "true" ]]; then
-            echo -e "${YELLOW}Dry Run Mode${NC} - Preview only, no deletions"
+            echo -e "${YELLOW}Dry Run Mode${NC}, Preview only, no deletions"
             echo ""
         fi
         echo -e "${GREEN}${ICON_LIST}${NC} User app cache"
@@ -867,7 +881,7 @@ perform_cleanup() {
         fda_status=$?
         if [[ $fda_status -eq 1 ]]; then
             echo ""
-            echo -e "${YELLOW}${ICON_WARNING}${NC} ${GRAY}Tip: Grant Full Disk Access to your terminal in System Settings for best results${NC}"
+            echo -e "${GRAY}${ICON_WARNING}${NC} ${GRAY}Tip: Grant Full Disk Access to your terminal in System Settings for best results${NC}"
         fi
     fi
 
@@ -892,7 +906,7 @@ perform_cleanup() {
     if [[ ${#WHITELIST_WARNINGS[@]} -gt 0 ]]; then
         echo ""
         for warning in "${WHITELIST_WARNINGS[@]}"; do
-            echo -e "  ${YELLOW}${ICON_WARNING}${NC} Whitelist: $warning"
+            echo -e "  ${GRAY}${ICON_WARNING}${NC} Whitelist: $warning"
         done
     fi
 
@@ -955,6 +969,7 @@ perform_cleanup() {
     # ===== 12. Orphaned app data cleanup (60+ days inactive, skip protected vendors) =====
     start_section "Uninstalled app data"
     clean_orphaned_app_data
+    clean_orphaned_system_services
     end_section
 
     # ===== 13. Apple Silicon optimizations =====
@@ -968,6 +983,11 @@ perform_cleanup() {
     # ===== 15. Time Machine incomplete backups =====
     start_section "Time Machine incomplete backups"
     clean_time_machine_failed_backups
+    end_section
+
+    # ===== 16. Large files to review (report only) =====
+    start_section "Large files to review"
+    check_large_file_candidates
     end_section
 
     # ===== Final summary =====
@@ -1022,7 +1042,11 @@ perform_cleanup() {
                 local movies
                 movies=$(echo "$freed_gb" | awk '{printf "%.0f", $1/4.5}')
                 if [[ $movies -gt 0 ]]; then
-                    summary_details+=("Equivalent to ~$movies 4K movies of storage.")
+                    if [[ $movies -eq 1 ]]; then
+                        summary_details+=("Equivalent to ~$movies 4K movie of storage.")
+                    else
+                        summary_details+=("Equivalent to ~$movies 4K movies of storage.")
+                    fi
                 fi
             fi
 
@@ -1032,7 +1056,7 @@ perform_cleanup() {
     else
         summary_status="info"
         if [[ "$DRY_RUN" == "true" ]]; then
-            summary_details+=("No significant reclaimable space detected (system already clean).")
+            summary_details+=("No significant reclaimable space detected, system already clean.")
         else
             summary_details+=("System was already clean; no additional space freed.")
         fi
@@ -1042,6 +1066,9 @@ perform_cleanup() {
     if [[ $had_errexit -eq 1 ]]; then
         set -e
     fi
+
+    # Log session end with summary
+    log_operation_session_end "clean" "$files_cleaned" "$total_size_cleaned"
 
     print_summary_block "$summary_heading" "${summary_details[@]}"
     printf '\n'
@@ -1055,6 +1082,7 @@ main() {
                 ;;
             "--dry-run" | "-n")
                 DRY_RUN=true
+                export MOLE_DRY_RUN=1
                 ;;
             "--whitelist")
                 source "$SCRIPT_DIR/../lib/manage/whitelist.sh"

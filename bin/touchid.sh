@@ -141,7 +141,7 @@ enable_touchid() {
                 sudo mv "$temp_file" "$PAM_SUDO_FILE"
                 log_success "Touch ID migrated to sudo_local"
             else
-                log_success "Touch ID enabled (via sudo_local) - try: sudo ls"
+                log_success "Touch ID enabled, via sudo_local, try: sudo ls"
             fi
             return 0
         else
@@ -188,7 +188,7 @@ enable_touchid() {
 
     # Apply the changes
     if sudo mv "$temp_file" "$PAM_SUDO_FILE" 2> /dev/null; then
-        log_success "Touch ID enabled - try: sudo ls"
+        log_success "Touch ID enabled, try: sudo ls"
         return 0
     else
         log_error "Failed to enable Touch ID"
@@ -219,7 +219,7 @@ disable_touchid() {
                 grep -v "pam_tid.so" "$PAM_SUDO_FILE" > "$temp_file"
                 sudo mv "$temp_file" "$PAM_SUDO_FILE"
             fi
-            echo -e "${GREEN}${ICON_SUCCESS} Touch ID disabled (removed from sudo_local)${NC}"
+            echo -e "${GREEN}${ICON_SUCCESS} Touch ID disabled, removed from sudo_local${NC}"
             echo ""
             return 0
         else

@@ -165,7 +165,7 @@ resolve_source_dir() {
         url="https://github.com/tw93/mole/archive/refs/tags/${branch}.tar.gz"
     fi
 
-    start_line_spinner "Fetching Mole source (${branch})..."
+    start_line_spinner "Fetching Mole source, ${branch}..."
     if command -v curl > /dev/null 2>&1; then
         if curl -fsSL --connect-timeout 10 --max-time 60 -o "$tmp/mole.tar.gz" "$url" 2> /dev/null; then
             if tar -xzf "$tmp/mole.tar.gz" -C "$tmp" 2> /dev/null; then
@@ -506,10 +506,11 @@ download_binary() {
     if curl -fsSL --connect-timeout 10 --max-time 60 -o "$target_path" "$url"; then
         if [[ -t 1 ]]; then stop_line_spinner; fi
         chmod +x "$target_path"
+        xattr -cr "$target_path" 2> /dev/null || true
         log_success "Downloaded ${binary_name} binary"
     else
         if [[ -t 1 ]]; then stop_line_spinner; fi
-        log_warning "Could not download ${binary_name} binary (v${version}), trying local build"
+        log_warning "Could not download ${binary_name} binary, v${version}, trying local build"
         if build_binary_from_source "$binary_name" "$target_path"; then
             return 0
         fi
@@ -659,9 +660,9 @@ print_usage_summary() {
     local message="Mole ${action} successfully"
 
     if [[ "$action" == "updated" && -n "$previous_version" && -n "$new_version" && "$previous_version" != "$new_version" ]]; then
-        message+=" (${previous_version} -> ${new_version})"
+        message+=", ${previous_version} -> ${new_version}"
     elif [[ -n "$new_version" ]]; then
-        message+=" (version ${new_version})"
+        message+=", version ${new_version}"
     fi
 
     log_confirm "$message"
@@ -763,7 +764,7 @@ perform_update() {
     fi
 
     if [[ "$installed_version" == "$target_version" ]]; then
-        echo -e "${GREEN}${ICON_SUCCESS}${NC} Already on latest version ($installed_version)"
+        echo -e "${GREEN}${ICON_SUCCESS}${NC} Already on latest version, $installed_version"
         exit 0
     fi
 
@@ -794,7 +795,7 @@ perform_update() {
         updated_version="$target_version"
     fi
 
-    echo -e "${GREEN}${ICON_SUCCESS}${NC} Updated to latest version ($updated_version)"
+    echo -e "${GREEN}${ICON_SUCCESS}${NC} Updated to latest version, $updated_version"
 }
 
 parse_args "$@"

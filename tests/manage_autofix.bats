@@ -14,7 +14,6 @@ source "$PROJECT_ROOT/lib/manage/autofix.sh"
 export FIREWALL_DISABLED=true
 export FILEVAULT_DISABLED=true
 export TOUCHID_NOT_CONFIGURED=true
-export ROSETTA_NOT_INSTALLED=true
 export CACHE_SIZE_GB=9
 export BREW_HAS_WARNINGS=true
 export DISK_FREE_GB=25
@@ -27,7 +26,6 @@ EOF
     [[ "$output" == *"Enable Firewall for better security"* ]]
     [[ "$output" == *"Enable FileVault"* ]]
     [[ "$output" == *"Enable Touch ID for sudo"* ]]
-    [[ "$output" == *"Install Rosetta 2"* ]]
     [[ "$output" == *"Low disk space (25GB free)"* ]]
     [[ "$output" == *"AUTO_FLAG=true"* ]]
 }
@@ -72,10 +70,6 @@ sudo() {
     case "$1" in
         defaults) return 0 ;;
         bash) return 0 ;;
-        softwareupdate)
-            echo "Installing Rosetta 2 stub output"
-            return 0
-            ;;
         /usr/libexec/ApplicationFirewall/socketfilterfw) return 0 ;;
         *) return 0 ;;
     esac
@@ -83,7 +77,6 @@ sudo() {
 
 export FIREWALL_DISABLED=true
 export TOUCHID_NOT_CONFIGURED=true
-export ROSETTA_NOT_INSTALLED=true
 
 perform_auto_fix
 echo "SUMMARY=${AUTO_FIX_SUMMARY}"
@@ -93,7 +86,6 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"Firewall enabled"* ]]
     [[ "$output" == *"Touch ID configured"* ]]
-    [[ "$output" == *"Rosetta 2 installed"* ]]
-    [[ "$output" == *"SUMMARY=Auto fixes applied: 3 issue(s)"* ]]
+    [[ "$output" == *"SUMMARY=Auto fixes applied: 2 issues"* ]]
     [[ "$output" == *"DETAILS"* ]]
 }

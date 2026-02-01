@@ -78,7 +78,7 @@ show_optimization_summary() {
     local total_applied=$((safe_count + confirm_count))
 
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
-        summary_title="Dry Run Complete - No Changes Made"
+        summary_title="Dry Run Complete, No Changes Made"
         summary_details+=("Would apply ${YELLOW}${total_applied:-0}${NC} optimizations")
         summary_details+=("Run without ${YELLOW}--dry-run${NC} to apply these changes")
     else
@@ -115,9 +115,9 @@ show_optimization_summary() {
         fi
 
         if [[ -n "$key_stat" ]]; then
-            summary_details+=("Applied ${GREEN}${total_applied:-0}${NC} optimizations — ${key_stat}")
+            summary_details+=("Applied ${GREEN}${total_applied:-0}${NC} optimizations, ${key_stat}")
         else
-            summary_details+=("Applied ${GREEN}${total_applied:-0}${NC} optimizations — all services tuned")
+            summary_details+=("Applied ${GREEN}${total_applied:-0}${NC} optimizations, all services tuned")
         fi
 
         local summary_line3=""
@@ -126,11 +126,11 @@ show_optimization_summary() {
             if [[ -n "${AUTO_FIX_DETAILS:-}" ]]; then
                 local detail_join
                 detail_join=$(echo "${AUTO_FIX_DETAILS}" | paste -sd ", " -)
-                [[ -n "$detail_join" ]] && summary_line3+=" — ${detail_join}"
+                [[ -n "$detail_join" ]] && summary_line3+=": ${detail_join}"
             fi
             summary_details+=("$summary_line3")
         fi
-        summary_details+=("System fully optimized — faster, more secure and responsive")
+        summary_details+=("System fully optimized")
     fi
 
     print_summary_block "$summary_title" "${summary_details[@]}"
@@ -204,7 +204,7 @@ cleanup_path() {
         return
     fi
     if should_protect_path "$expanded_path"; then
-        echo -e "${YELLOW}${ICON_WARNING}${NC} Protected $label"
+        echo -e "${GRAY}${ICON_WARNING}${NC} Protected $label"
         return
     fi
 
@@ -226,12 +226,12 @@ cleanup_path() {
 
     if [[ "$removed" == "true" ]]; then
         if [[ -n "$size_display" ]]; then
-            echo -e "${GREEN}${ICON_SUCCESS}${NC} $label ${GREEN}(${size_display})${NC}"
+            echo -e "${GREEN}${ICON_SUCCESS}${NC} $label${NC}, ${GREEN}${size_display}${NC}"
         else
             echo -e "${GREEN}${ICON_SUCCESS}${NC} $label"
         fi
     else
-        echo -e "${YELLOW}${ICON_WARNING}${NC} Skipped $label ${GRAY}(grant Full Disk Access to your terminal and retry)${NC}"
+        echo -e "${GRAY}${ICON_WARNING}${NC} Skipped $label${GRAY}, grant Full Disk Access to your terminal and retry${NC}"
     fi
 }
 
@@ -252,7 +252,7 @@ collect_security_fix_actions() {
     fi
     if [[ "${GATEKEEPER_DISABLED:-}" == "true" ]]; then
         if ! is_whitelisted "gatekeeper"; then
-            SECURITY_FIXES+=("gatekeeper|Enable Gatekeeper (App download protection)")
+            SECURITY_FIXES+=("gatekeeper|Enable Gatekeeper, app download protection")
         fi
     fi
     if touchid_supported && ! touchid_configured; then
@@ -304,7 +304,7 @@ apply_firewall_fix() {
         FIREWALL_DISABLED=false
         return 0
     fi
-    echo -e "  ${YELLOW}${ICON_WARNING}${NC} Failed to enable firewall (check permissions)"
+    echo -e "  ${GRAY}${ICON_WARNING}${NC} Failed to enable firewall, check permissions"
     return 1
 }
 
@@ -314,7 +314,7 @@ apply_gatekeeper_fix() {
         GATEKEEPER_DISABLED=false
         return 0
     fi
-    echo -e "  ${YELLOW}${ICON_WARNING}${NC} Failed to enable Gatekeeper"
+    echo -e "  ${GRAY}${ICON_WARNING}${NC} Failed to enable Gatekeeper"
     return 1
 }
 
@@ -327,7 +327,7 @@ apply_touchid_fix() {
 
 perform_security_fixes() {
     if ! ensure_sudo_session "Security changes require admin access"; then
-        echo -e "${YELLOW}${ICON_WARNING}${NC} Skipped security fixes (sudo denied)"
+        echo -e "${GRAY}${ICON_WARNING}${NC} Skipped security fixes, sudo denied"
         return 1
     fi
 
@@ -357,6 +357,8 @@ cleanup_all() {
     stop_inline_spinner 2> /dev/null || true
     stop_sudo_session
     cleanup_temp_files
+    # Log session end
+    log_operation_session_end "optimize" "${OPTIMIZE_SAFE_COUNT:-0}" "0"
 }
 
 handle_interrupt() {
@@ -365,6 +367,9 @@ handle_interrupt() {
 }
 
 main() {
+    # Set current command for operation logging
+    export MOLE_CURRENT_COMMAND="optimize"
+
     local health_json
     for arg in "$@"; do
         case "$arg" in
@@ -381,6 +386,8 @@ main() {
         esac
     done
 
+    log_operation_session_start "optimize"
+
     trap cleanup_all EXIT
     trap handle_interrupt INT TERM
 
@@ -391,7 +398,7 @@ main() {
 
     # Dry-run indicator.
     if [[ "${MOLE_DRY_RUN:-0}" == "1" ]]; then
-        echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC} - No files will be modified\n"
+        echo -e "${YELLOW}${ICON_DRY_RUN} DRY RUN MODE${NC}, No files will be modified\n"
     fi
 
     if ! command -v jq > /dev/null 2>&1; then

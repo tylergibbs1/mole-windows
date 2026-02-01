@@ -627,6 +627,336 @@ function Clear-OtherLangCache {
 }
 
 # ============================================================================
+# Stale Node Modules Cleanup
+# ============================================================================
+
+function Clear-StaleNodeModules {
+    <#
+    .SYNOPSIS
+        Finds and removes node_modules from old/stale projects.
+        Only cleans projects where package.json hasn't been modified in 30+ days.
+        NEVER touches pnpm store, npm cache, or global node_modules.
+    #>
+    param(
+        [int]$DaysOld = 30
+    )
+
+    Start-MoleSection -Title "Stale Node Modules"
+
+    # Paths to NEVER touch - pnpm/npm stores and global locations
+    $excludedPaths = @(
+        (Join-Path $env:LOCALAPPDATA "pnpm"),
+        (Join-Path $env:USERPROFILE ".pnpm-store"),
+        (Join-Path $env:LOCALAPPDATA "npm-cache"),
+        (Join-Path $env:APPDATA "npm-cache"),
+        (Join-Path $env:APPDATA "npm"),
+        (Join-Path $env:LOCALAPPDATA "npm"),
+        (Join-Path $env:ProgramFiles "nodejs"),
+        (Join-Path ${env:ProgramFiles(x86)} "nodejs"),
+        # Also exclude any path with these patterns
+        "pnpm-store",
+        ".pnpm-store",
+        "\pnpm\",
+        "\.pnpm\"
+    )
+
+    # Common directories where developers keep projects
+    # Skip OneDrive - too slow to scan and synced files shouldn't be auto-deleted
+    $searchDirs = @(
+        (Join-Path $env:USERPROFILE "Projects"),
+        (Join-Path $env:USERPROFILE "projects"),
+        (Join-Path $env:USERPROFILE "Code"),
+        (Join-Path $env:USERPROFILE "code"),
+        (Join-Path $env:USERPROFILE "Dev"),
+        (Join-Path $env:USERPROFILE "dev"),
+        (Join-Path $env:USERPROFILE "Development"),
+        (Join-Path $env:USERPROFILE "Repos"),
+        (Join-Path $env:USERPROFILE "repos"),
+        (Join-Path $env:USERPROFILE "src"),
+        (Join-Path $env:USERPROFILE "Source"),
+        (Join-Path $env:USERPROFILE "workspace"),
+        (Join-Path $env:USERPROFILE "Workspace"),
+        (Join-Path $env:USERPROFILE "GitHub"),
+        (Join-Path $env:USERPROFILE "git")
+        # Note: Skipping Desktop/Documents/OneDrive - too slow and risky
+    )
+
+    $staleModules = @()
+    $cutoffDate = (Get-Date).AddDays(-$DaysOld)
+
+    foreach ($searchDir in $searchDirs) {
+        if (-not (Test-Path $searchDir)) {
+            continue
+        }
+
+        # Find all node_modules directories (limit depth for performance)
+        $nodeModulesDirs = Get-ChildItem -Path $searchDir -Filter "node_modules" -Directory -Recurse -Depth 4 -ErrorAction SilentlyContinue
+
+        foreach ($nmDir in $nodeModulesDirs) {
+            $nmPath = $nmDir.FullName
+
+            # Skip if path matches any excluded pattern
+            $isExcluded = $false
+            foreach ($excluded in $excludedPaths) {
+                if ($nmPath -like "*$excluded*") {
+                    $isExcluded = $true
+                    Write-MoleDebug "Skipping excluded path: $nmPath"
+                    break
+                }
+            }
+            if ($isExcluded) { continue }
+
+            # Skip if this is inside another node_modules (nested)
+            $parentPath = Split-Path $nmPath -Parent
+            if ($parentPath -like "*\node_modules\*" -or $parentPath -like "*\node_modules") {
+                continue
+            }
+
+            # Check for package.json in parent directory
+            $packageJson = Join-Path $parentPath "package.json"
+            if (-not (Test-Path $packageJson)) {
+                continue
+            }
+
+            # Check if package.json is older than cutoff
+            $packageJsonInfo = Get-Item $packageJson -ErrorAction SilentlyContinue
+            if ($packageJsonInfo -and $packageJsonInfo.LastWriteTime -lt $cutoffDate) {
+                $size = Get-PathSize -Path $nmPath
+                if ($size -gt 1MB) {  # Only report if > 1MB
+                    $staleModules += @{
+                        Path        = $nmPath
+                        ProjectPath = $parentPath
+                        Size        = $size
+                        LastUsed    = $packageJsonInfo.LastWriteTime
+                        DaysOld     = [math]::Floor(((Get-Date) - $packageJsonInfo.LastWriteTime).TotalDays)
+                    }
+                }
+            }
+        }
+    }
+
+    if ($staleModules.Count -eq 0) {
+        Write-MoleSuccess "No stale node_modules found (older than $DaysOld days)"
+        Stop-MoleSection
+        return
+    }
+
+    # Sort by size descending
+    $staleModules = $staleModules | Sort-Object { $_.Size } -Descending
+
+    $totalSize = ($staleModules | Measure-Object -Property Size -Sum).Sum
+
+    Write-Host ""
+    Write-Host "  Found $($script:YELLOW)$($staleModules.Count)$($script:NC) stale node_modules ($(Format-ByteSize -Bytes $totalSize) total):"
+    Write-Host ""
+
+    # Show top entries
+    $showCount = [Math]::Min($staleModules.Count, 10)
+    for ($i = 0; $i -lt $showCount; $i++) {
+        $module = $staleModules[$i]
+        $projectName = Split-Path $module.ProjectPath -Leaf
+        Write-Host "    $($script:ICON_LIST) $projectName ($($script:GREEN)$(Format-ByteSize -Bytes $module.Size)$($script:NC)) - $($module.DaysOld) days old"
+    }
+
+    if ($staleModules.Count -gt 10) {
+        Write-Host "    $($script:GRAY)... and $($staleModules.Count - 10) more$($script:NC)"
+    }
+    Write-Host ""
+
+    if (Get-MoleDryRun) {
+        Write-MoleDryRun "Would clean $($staleModules.Count) stale node_modules ($(Format-ByteSize -Bytes $totalSize))"
+    }
+    else {
+        # Clean each stale node_modules
+        $cleanedCount = 0
+        $cleanedSize = 0
+
+        foreach ($module in $staleModules) {
+            try {
+                # Double-check it's not an excluded path before deleting
+                $safeToDelete = $true
+                foreach ($excluded in $excludedPaths) {
+                    if ($module.Path -like "*$excluded*") {
+                        $safeToDelete = $false
+                        break
+                    }
+                }
+
+                if ($safeToDelete) {
+                    Remove-Item -Path $module.Path -Recurse -Force -ErrorAction Stop
+                    $cleanedCount++
+                    $cleanedSize += $module.Size
+                    Set-MoleActivity
+                }
+            }
+            catch {
+                Write-MoleDebug "Failed to remove $($module.Path): $($_.Exception.Message)"
+            }
+        }
+
+        if ($cleanedCount -gt 0) {
+            Write-MoleSuccess "Cleaned $cleanedCount stale node_modules ($(Format-ByteSize -Bytes $cleanedSize))"
+        }
+    }
+
+    Stop-MoleSection
+}
+
+# ============================================================================
+# ML/AI Model Caches
+# ============================================================================
+
+function Clear-MLModelCache {
+    <#
+    .SYNOPSIS
+        Cleans HuggingFace, Ollama, PyTorch, and other ML model caches.
+        WARNING: These caches can be VERY large (10-100+ GB).
+        Models will need to be re-downloaded after cleaning.
+    #>
+    Start-MoleSection -Title "ML/AI Model Caches"
+
+    # HuggingFace cache (can be enormous - 10-100+ GB)
+    # Check for HF_HOME environment variable first
+    $hfHome = $env:HF_HOME
+    if (-not $hfHome) {
+        $hfHome = Join-Path $env:USERPROFILE ".cache\huggingface"
+    }
+
+    if (Test-Path $hfHome) {
+        # Hub contains downloaded models
+        $hfHub = Join-Path $hfHome "hub"
+        if (Test-Path $hfHub) {
+            $size = Get-PathSize -Path $hfHub
+            if ($size -gt 0) {
+                if (Get-MoleDryRun) {
+                    Write-MoleDryRun "HuggingFace models (hub) - would clean $(Format-ByteSize -Bytes $size)"
+                }
+                else {
+                    Invoke-SafeClean -Path "$hfHub\*" -Description "HuggingFace models (hub)"
+                }
+            }
+        }
+
+        # Transformers cache (legacy location)
+        $hfTransformers = Join-Path $hfHome "transformers"
+        if (Test-Path $hfTransformers) {
+            Invoke-SafeClean -Path "$hfTransformers\*" -Description "HuggingFace transformers cache"
+        }
+
+        # Datasets cache
+        $hfDatasets = Join-Path $hfHome "datasets"
+        if (Test-Path $hfDatasets) {
+            $size = Get-PathSize -Path $hfDatasets
+            if ($size -gt 0) {
+                if (Get-MoleDryRun) {
+                    Write-MoleDryRun "HuggingFace datasets - would clean $(Format-ByteSize -Bytes $size)"
+                }
+                else {
+                    Invoke-SafeClean -Path "$hfDatasets\*" -Description "HuggingFace datasets"
+                }
+            }
+        }
+
+        # Accelerate cache
+        $hfAccelerate = Join-Path $hfHome "accelerate"
+        if (Test-Path $hfAccelerate) {
+            Invoke-SafeClean -Path "$hfAccelerate\*" -Description "HuggingFace accelerate cache"
+        }
+
+        # Token (don't clean - it's auth)
+        # $hfToken = Join-Path $hfHome "token" - SKIP
+    }
+
+    # Ollama models (also can be huge)
+    $ollamaModels = Join-Path $env:USERPROFILE ".ollama\models"
+    if (Test-Path $ollamaModels) {
+        $size = Get-PathSize -Path $ollamaModels
+        if ($size -gt 100MB) {
+            Write-Host "  $($script:ICON_LIST) Ollama models: $(Format-ByteSize -Bytes $size)"
+            Write-Host "    $($script:GRAY)Clean with: ollama rm <model-name>$($script:NC)"
+            Write-Host "    $($script:GRAY)List models: ollama list$($script:NC)"
+        }
+    }
+
+    # PyTorch hub cache
+    $torchHub = Join-Path $env:USERPROFILE ".cache\torch\hub"
+    if (Test-Path $torchHub) {
+        Invoke-SafeClean -Path "$torchHub\*" -Description "PyTorch hub cache"
+    }
+
+    # PyTorch checkpoints
+    $torchCheckpoints = Join-Path $env:USERPROFILE ".cache\torch\checkpoints"
+    if (Test-Path $torchCheckpoints) {
+        Invoke-SafeClean -Path "$torchCheckpoints\*" -Description "PyTorch checkpoints"
+    }
+
+    # Keras models
+    $kerasModels = Join-Path $env:USERPROFILE ".keras\models"
+    if (Test-Path $kerasModels) {
+        Invoke-SafeClean -Path "$kerasModels\*" -Description "Keras models cache"
+    }
+
+    # TensorFlow hub cache
+    $tfCache = Join-Path $env:LOCALAPPDATA "tf_cache"
+    if (-not (Test-Path $tfCache)) {
+        $tfCache = Join-Path $env:USERPROFILE ".cache\tensorflow_hub"
+    }
+    if (Test-Path $tfCache) {
+        Invoke-SafeClean -Path "$tfCache\*" -Description "TensorFlow hub cache"
+    }
+
+    # Sentence Transformers cache
+    $stCache = Join-Path $env:USERPROFILE ".cache\torch\sentence_transformers"
+    if (Test-Path $stCache) {
+        Invoke-SafeClean -Path "$stCache\*" -Description "Sentence Transformers cache"
+    }
+
+    # OpenAI Whisper cache
+    $whisperCache = Join-Path $env:USERPROFILE ".cache\whisper"
+    if (Test-Path $whisperCache) {
+        Invoke-SafeClean -Path "$whisperCache\*" -Description "Whisper models cache"
+    }
+
+    # Stable Diffusion / ComfyUI models (common locations)
+    $sdModels = Join-Path $env:USERPROFILE ".cache\stable-diffusion"
+    if (Test-Path $sdModels) {
+        $size = Get-PathSize -Path $sdModels
+        if ($size -gt 100MB) {
+            Write-Host "  $($script:ICON_LIST) Stable Diffusion cache: $(Format-ByteSize -Bytes $size)"
+            Write-Host "    $($script:GRAY)Clean manually if needed$($script:NC)"
+        }
+    }
+
+    # LangChain cache
+    $langchainCache = Join-Path $env:USERPROFILE ".cache\langchain"
+    if (Test-Path $langchainCache) {
+        Invoke-SafeClean -Path "$langchainCache\*" -Description "LangChain cache"
+    }
+
+    # NLTK data
+    $nltkData = Join-Path $env:APPDATA "nltk_data"
+    if (Test-Path $nltkData) {
+        $size = Get-PathSize -Path $nltkData
+        if ($size -gt 100MB) {
+            Write-Host "  $($script:ICON_LIST) NLTK data: $(Format-ByteSize -Bytes $size)"
+            Write-Host "    $($script:GRAY)Clean manually if needed$($script:NC)"
+        }
+    }
+
+    # Spacy models
+    $spacyData = Join-Path $env:LOCALAPPDATA "spacy\data"
+    if (Test-Path $spacyData) {
+        $size = Get-PathSize -Path $spacyData
+        if ($size -gt 100MB) {
+            Write-Host "  $($script:ICON_LIST) SpaCy models: $(Format-ByteSize -Bytes $size)"
+            Write-Host "    $($script:GRAY)Clean manually if needed$($script:NC)"
+        }
+    }
+
+    Stop-MoleSection
+}
+
+# ============================================================================
 # Master Developer Tools Cleanup Function
 # ============================================================================
 
@@ -649,6 +979,8 @@ function Invoke-DevCleanup {
     Clear-CloudToolsCache
     Clear-IdeCache
     Clear-OtherLangCache
+    Clear-MLModelCache
+    Clear-StaleNodeModules
 
     return @{
         CleanedSize = 0  # Size tracking would require more integration
@@ -669,5 +1001,7 @@ Export-ModuleMember -Function @(
     'Clear-CloudToolsCache'
     'Clear-IdeCache'
     'Clear-OtherLangCache'
+    'Clear-MLModelCache'
+    'Clear-StaleNodeModules'
     'Invoke-DevCleanup'
 )

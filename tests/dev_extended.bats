@@ -123,29 +123,84 @@ EOF
 }
 
 @test "check_android_ndk reports multiple NDK versions" {
-    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk"/{21.0.1,22.0.0,20.0.0} && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk"/{21.0.1,22.0.0,20.0.0} && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_SUCCESS="✓" && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Found 3 Android NDK versions"* ]]
+    [[ "$output" == *"Android NDK versions: 3 found"* ]]
 }
 
 @test "check_android_ndk silent when only one NDK" {
-    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk/22.0.0" && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/Library/Android/sdk/ndk/22.0.0" && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_SUCCESS="✓" && check_android_ndk' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Found"*"NDK"* ]]
+    [[ "$output" != *"NDK versions"* ]]
 }
 
 @test "check_rust_toolchains reports multiple toolchains" {
-    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains"/{stable,nightly,1.75.0}-aarch64-apple-darwin && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains"/{stable,nightly,1.75.0}-aarch64-apple-darwin && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_SUCCESS="✓" && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Found 3 Rust toolchains"* ]]
+    [[ "$output" == *"Rust toolchains: 3 found"* ]]
 }
 
 @test "check_rust_toolchains silent when only one toolchain" {
-    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains/stable-aarch64-apple-darwin" && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
+    run bash -c 'HOME=$(mktemp -d) && mkdir -p "$HOME/.rustup/toolchains/stable-aarch64-apple-darwin" && source "$0" && note_activity() { :; } && NC="" && GREEN="" && GRAY="" && YELLOW="" && ICON_SUCCESS="✓" && rustup() { :; } && export -f rustup && check_rust_toolchains' "$PROJECT_ROOT/lib/clean/dev.sh"
 
     [ "$status" -eq 0 ]
-    [[ "$output" != *"Found"*"Rust"* ]]
+    [[ "$output" != *"Rust toolchains"* ]]
+}
+
+@test "clean_dev_jetbrains_toolbox cleans old versions and bypasses toolbox whitelist" {
+    local toolbox_channel="$HOME/Library/Application Support/JetBrains/Toolbox/apps/IDEA/ch-0"
+    mkdir -p "$toolbox_channel/241.1" "$toolbox_channel/241.2" "$toolbox_channel/241.3"
+    ln -s "241.3" "$toolbox_channel/current"
+    touch -t 202401010000 "$toolbox_channel/241.1"
+    touch -t 202402010000 "$toolbox_channel/241.2"
+    touch -t 202403010000 "$toolbox_channel/241.3"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+toolbox_root="$HOME/Library/Application Support/JetBrains/Toolbox/apps"
+WHITELIST_PATTERNS=("$toolbox_root"* "$HOME/Library/Application Support/JetBrains*")
+note_activity() { :; }
+safe_clean() {
+    local target="$1"
+    for pattern in "${WHITELIST_PATTERNS[@]+${WHITELIST_PATTERNS[@]}}"; do
+        if [[ "$pattern" == "$toolbox_root"* ]]; then
+            echo "WHITELIST_NOT_REMOVED"
+            exit 1
+        fi
+    done
+    echo "$target"
+}
+MOLE_JETBRAINS_TOOLBOX_KEEP=1
+clean_dev_jetbrains_toolbox
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"/241.1"* ]]
+    [[ "$output" != *"/241.2"* ]]
+}
+
+@test "clean_dev_jetbrains_toolbox keeps current directory and removes older versions" {
+    local toolbox_channel="$HOME/Library/Application Support/JetBrains/Toolbox/apps/IDEA/ch-0"
+    mkdir -p "$toolbox_channel/241.1" "$toolbox_channel/241.2" "$toolbox_channel/current"
+    touch -t 202401010000 "$toolbox_channel/241.1"
+    touch -t 202402010000 "$toolbox_channel/241.2"
+
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+note_activity() { :; }
+safe_clean() { echo "$1"; }
+MOLE_JETBRAINS_TOOLBOX_KEEP=1
+clean_dev_jetbrains_toolbox
+EOF
+
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"/241.1"* ]]
+    [[ "$output" != *"/241.2"* ]]
 }

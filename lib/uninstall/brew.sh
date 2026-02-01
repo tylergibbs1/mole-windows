@@ -173,17 +173,45 @@ brew_uninstall_cask() {
 
     debug_log "Attempting brew uninstall --cask $cask_name"
 
-    # Run uninstall with timeout (suppress hints/auto-update)
-    local uninstall_ok=false
-    local output
-    if output=$(HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_AUTO_UPDATE=1 NONINTERACTIVE=1 \
-        run_with_timeout 120 brew uninstall --cask "$cask_name" 2>&1); then
-        uninstall_ok=true
-    else
-        debug_log "brew uninstall output: $output"
+    # Ensure we have sudo access if needed, to prevent brew from hanging on password prompt
+    if [[ "${NONINTERACTIVE:-}" != "1" && -t 0 && -t 1 ]]; then
+        if ! sudo -n true 2> /dev/null; then
+            sudo -v
+        fi
     fi
 
-    # Verify removal
+    local uninstall_ok=false
+    local brew_exit=0
+
+    # Calculate timeout based on app size (large apps need more time)
+    local timeout=300 # Default 5 minutes
+    if [[ -n "$app_path" && -d "$app_path" ]]; then
+        local size_gb=$(($(get_path_size_kb "$app_path") / 1048576))
+        if [[ $size_gb -gt 15 ]]; then
+            timeout=900 # 15 minutes for very large apps (Xcode, Adobe, etc.)
+        elif [[ $size_gb -gt 5 ]]; then
+            timeout=600 # 10 minutes for large apps
+        fi
+        debug_log "App size: ${size_gb}GB, timeout: ${timeout}s"
+    fi
+
+    # Run with timeout to prevent hangs from problematic cask scripts
+    local brew_exit=0
+    if HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_AUTO_UPDATE=1 NONINTERACTIVE=1 \
+        run_with_timeout "$timeout" brew uninstall --cask "$cask_name" 2>&1; then
+        uninstall_ok=true
+    else
+        brew_exit=$?
+        debug_log "brew uninstall timeout or failed with exit code: $brew_exit"
+        # Exit code 124 indicates timeout from run_with_timeout
+        # On timeout, fail immediately without verification to avoid inconsistent state
+        if [[ $brew_exit -eq 124 ]]; then
+            debug_log "brew uninstall timed out after ${timeout}s, returning failure"
+            return 1
+        fi
+    fi
+
+    # Verify removal (only if not timed out)
     local cask_gone=true app_gone=true
     HOMEBREW_NO_ENV_HINTS=1 brew list --cask 2> /dev/null | grep -qxF "$cask_name" && cask_gone=false
     [[ -n "$app_path" && -e "$app_path" ]] && app_gone=false

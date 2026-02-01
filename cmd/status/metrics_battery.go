@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/shirou/gopsutil/v3/host"
 )
 
 var (
@@ -282,30 +280,4 @@ func collectThermal() ThermalStatus {
 	}
 
 	return thermal
-}
-
-func collectSensors() ([]SensorReading, error) {
-	temps, err := host.SensorsTemperatures()
-	if err != nil {
-		return nil, err
-	}
-	var out []SensorReading
-	for _, t := range temps {
-		if t.Temperature <= 0 || t.Temperature > 150 {
-			continue
-		}
-		out = append(out, SensorReading{
-			Label: prettifyLabel(t.SensorKey),
-			Value: t.Temperature,
-			Unit:  "°C",
-		})
-	}
-	return out, nil
-}
-
-func prettifyLabel(key string) string {
-	key = strings.TrimSpace(key)
-	key = strings.TrimPrefix(key, "TC")
-	key = strings.ReplaceAll(key, "_", " ")
-	return key
 }

@@ -263,7 +263,7 @@ opt_sqlite_vacuum() {
     fi
 
     if ! command -v sqlite3 > /dev/null 2>&1; then
-        echo -e "  ${GRAY}-${NC} Database optimization already optimal (sqlite3 unavailable)"
+        echo -e "  ${GRAY}-${NC} Database optimization already optimal, sqlite3 unavailable"
         return 0
     fi
 
@@ -584,7 +584,7 @@ opt_disk_permissions_repair() {
             opt_msg "User directory permissions repaired"
             opt_msg "File access issues resolved"
         else
-            echo -e "  ${YELLOW}!${NC} Failed to repair permissions (may not be needed)"
+            echo -e "  ${YELLOW}!${NC} Failed to repair permissions, may not be needed"
         fi
     else
         opt_msg "User directory permissions repaired"
@@ -705,7 +705,7 @@ opt_spotlight_index_optimize() {
             fi
 
             if [[ "${MOLE_DRY_RUN:-0}" != "1" ]]; then
-                echo -e "  ${BLUE}ℹ${NC} Spotlight search is slow, rebuilding index (may take 1-2 hours)"
+                echo -e "  ${BLUE}ℹ${NC} Spotlight search is slow, rebuilding index, may take 1-2 hours"
                 if sudo mdutil -E / > /dev/null 2>&1; then
                     opt_msg "Spotlight index rebuild started"
                     echo -e "  ${GRAY}Indexing will continue in background${NC}"
@@ -733,7 +733,7 @@ opt_dock_refresh() {
             if [[ -f "$db_file" ]]; then
                 safe_remove "$db_file" true > /dev/null 2>&1 && refreshed=true
             fi
-        done < <(find "$dock_support" -name "*.db" -type f 2> /dev/null || true)
+        done < <(command find "$dock_support" -name "*.db" -type f 2> /dev/null || true)
     fi
 
     local dock_plist="$HOME/Library/Preferences/com.apple.dock.plist"

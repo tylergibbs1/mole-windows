@@ -565,7 +565,7 @@ main() {
             continue
         fi
         # Show selected apps with clean alignment
-        echo -e "${BLUE}${ICON_CONFIRM}${NC} Selected ${selection_count} app(s):"
+        echo -e "${BLUE}${ICON_CONFIRM}${NC} Selected ${selection_count} apps:"
         local -a summary_rows=()
         local max_name_width=0
         local max_size_width=0

@@ -18,7 +18,7 @@ clean_xcode_tools() {
         safe_clean ~/Library/Developer/Xcode/DerivedData/* "Xcode derived data"
         safe_clean ~/Library/Developer/Xcode/Archives/* "Xcode archives"
     else
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Xcode is running, skipping DerivedData and Archives cleanup"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Xcode is running, skipping DerivedData and Archives cleanup"
     fi
 }
 # Code editors.
@@ -107,13 +107,18 @@ clean_media_players() {
         fi
     fi
     if [[ "$has_offline_music" == "true" ]]; then
-        echo -e "  ${YELLOW}${ICON_WARNING}${NC} Spotify cache protected · offline music detected"
+        echo -e "  ${GRAY}${ICON_WARNING}${NC} Spotify cache protected · offline music detected"
         note_activity
     else
         safe_clean ~/Library/Caches/com.spotify.client/* "Spotify cache"
     fi
     safe_clean ~/Library/Caches/com.apple.Music "Apple Music cache"
     safe_clean ~/Library/Caches/com.apple.podcasts "Apple Podcasts cache"
+    # Apple Podcasts sandbox container: zombie sparse files and stale artwork cache (#387)
+    safe_clean ~/Library/Containers/com.apple.podcasts/Data/tmp/StreamedMedia "Podcasts streamed media"
+    safe_clean ~/Library/Containers/com.apple.podcasts/Data/tmp/*.heic "Podcasts artwork cache"
+    safe_clean ~/Library/Containers/com.apple.podcasts/Data/tmp/*.img "Podcasts image cache"
+    safe_clean ~/Library/Containers/com.apple.podcasts/Data/tmp/*CFNetworkDownload*.tmp "Podcasts download temp"
     safe_clean ~/Library/Caches/com.apple.TV/* "Apple TV cache"
     safe_clean ~/Library/Caches/tv.plex.player.desktop "Plex cache"
     safe_clean ~/Library/Caches/com.netease.163music "NetEase Music cache"

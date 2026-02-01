@@ -100,7 +100,7 @@ run_with_timeout() {
     # ========================================================================
 
     if [[ "${MO_DEBUG:-0}" == "1" ]]; then
-        echo "[TIMEOUT] Shell fallback (${duration}s): $*" >&2
+        echo "[TIMEOUT] Shell fallback, ${duration}s: $*" >&2
     fi
 
     # Start command in background

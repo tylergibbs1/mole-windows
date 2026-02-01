@@ -387,7 +387,7 @@ select_installers() {
             scroll_indicator=" ${GRAY}[${current_pos}/${total_items}]${NC}"
         fi
 
-        printf "${PURPLE_BOLD}Select Installers to Remove${NC}%s ${GRAY}- ${selected_human} ($selected_count selected)${NC}\n" "$scroll_indicator"
+        printf "${PURPLE_BOLD}Select Installers to Remove${NC}%s ${GRAY}, ${selected_human}, ${selected_count} selected${NC}\n" "$scroll_indicator"
         printf "%s\n" "$clear_line"
 
         # Calculate visible range
@@ -546,13 +546,13 @@ delete_selected_installers() {
             local file_size="${INSTALLER_SIZES[$idx]}"
             local size_human
             size_human=$(bytes_to_human "$file_size")
-            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $(basename "$file_path") ${GRAY}(${size_human})${NC}"
+            echo -e "  ${GREEN}${ICON_SUCCESS}${NC} $(basename "$file_path") ${GRAY}, ${size_human}${NC}"
         fi
     done
 
     # Confirm deletion
     echo ""
-    echo -ne "${PURPLE}${ICON_ARROW}${NC} Delete ${#selected_indices[@]} installer(s) (${confirm_human})  ${GREEN}Enter${NC} confirm, ${GRAY}ESC${NC} cancel: "
+    echo -ne "${PURPLE}${ICON_ARROW}${NC} Delete ${#selected_indices[@]} installers, ${confirm_human}  ${GREEN}Enter${NC} confirm, ${GRAY}ESC${NC} cancel: "
 
     IFS= read -r -s -n1 confirm || confirm=""
     case "$confirm" in
@@ -655,7 +655,7 @@ show_summary() {
         local freed_mb
         freed_mb=$(echo "$total_size_freed_kb" | awk '{printf "%.2f", $1/1024}')
 
-        summary_details+=("Removed ${GREEN}$total_deleted${NC} installer(s), freed ${GREEN}${freed_mb}MB${NC}")
+        summary_details+=("Removed ${GREEN}$total_deleted${NC} installers, freed ${GREEN}${freed_mb}MB${NC}")
         summary_details+=("Your Mac is cleaner now!")
     else
         summary_details+=("No installers were removed")
