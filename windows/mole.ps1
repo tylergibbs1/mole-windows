@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("clean", "analyze", "status", "whitelist", "purge", "optimize", "media", "help", "version", "")]
+    [ValidateSet("clean", "analyze", "status", "whitelist", "purge", "optimize", "media", "dupes", "large", "help", "version", "")]
     [string]$Command = "",
 
     [Alias("n")]
@@ -98,6 +98,41 @@ $modulePaths = @(
 foreach ($modulePath in $modulePaths) {
     if (Test-Path $modulePath) {
         Import-Module $modulePath -Force -DisableNameChecking -Scope Global -ErrorAction SilentlyContinue
+    }
+}
+
+# ============================================================================
+# Fallback Helper Functions (in case modules fail to load)
+# ============================================================================
+if (-not (Get-Command Format-ByteSize -ErrorAction SilentlyContinue)) {
+    function global:Format-ByteSize {
+        param([long]$Bytes)
+        if ($Bytes -ge 1GB) { return "{0:N2}GB" -f ($Bytes / 1GB) }
+        elseif ($Bytes -ge 1MB) { return "{0:N1}MB" -f ($Bytes / 1MB) }
+        elseif ($Bytes -ge 1KB) { return "{0:N0}KB" -f ($Bytes / 1KB) }
+        else { return "{0}B" -f $Bytes }
+    }
+}
+
+if (-not (Get-Command Get-PathSize -ErrorAction SilentlyContinue)) {
+    function global:Get-PathSize {
+        param([string]$Path)
+        if (-not (Test-Path $Path)) { return 0 }
+        try {
+            $item = Get-Item $Path -Force -ErrorAction Stop
+            if ($item.PSIsContainer) {
+                return (Get-ChildItem -Path $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
+                    Measure-Object -Property Length -Sum).Sum
+            }
+            return $item.Length
+        } catch { return 0 }
+    }
+}
+
+if (-not (Get-Command Write-MoleError -ErrorAction SilentlyContinue)) {
+    function global:Write-MoleError {
+        param([string]$Message)
+        Write-Host "ERROR: $Message" -ForegroundColor Red
     }
 }
 
@@ -197,6 +232,8 @@ COMMANDS:
     purge           Clean project build artifacts
     optimize        Optimize system (cache rebuild, service refresh)
     media           Find and transfer media files between drives
+    dupes           Find duplicate files
+    large           Find large files
     help            Show this help message
     version         Show version information
 
@@ -215,6 +252,16 @@ MEDIA OPTIONS:
     mole media scan C:          Scan C: drive for media files
     mole media transfer C: E:   Transfer media from C: to E:
     mole media transfer C: E: -n  Preview transfer (dry-run)
+
+DUPLICATE FINDER:
+    mole dupes C:               Find duplicate files on C:
+    mole dupes C:\Users         Scan specific folder
+    mole dupes C: --min 10MB    Only find dupes larger than 10MB
+
+LARGE FILE FINDER:
+    mole large C:               Find large files on C: (default >100MB)
+    mole large C: --min 500MB   Find files larger than 500MB
+    mole large C: --min 1GB     Find files larger than 1GB
 
 GLOBAL OPTIONS:
     -DebugMode, -d  Enable debug logging
@@ -953,6 +1000,344 @@ function Invoke-MediaCommand {
 }
 
 # ============================================================================
+# Duplicate File Finder Command
+# ============================================================================
+function Invoke-DupesCommand {
+    Write-MoleBanner
+
+    # Parse arguments
+    $targetPath = if ($RemainingArgs.Count -gt 0) { $RemainingArgs[0] } else { "C:\" }
+
+    # Handle drive letter format
+    if ($targetPath -match "^[A-Za-z]:?$") {
+        $targetPath = $targetPath.TrimEnd(':') + ":\"
+    }
+
+    # Parse --min size argument
+    $minSize = 1MB  # Default minimum size
+    for ($i = 0; $i -lt $RemainingArgs.Count; $i++) {
+        if ($RemainingArgs[$i] -eq "--min" -and $i + 1 -lt $RemainingArgs.Count) {
+            $sizeStr = $RemainingArgs[$i + 1]
+            if ($sizeStr -match "^(\d+)(KB|MB|GB)$") {
+                $num = [int]$Matches[1]
+                switch ($Matches[2]) {
+                    "KB" { $minSize = $num * 1KB }
+                    "MB" { $minSize = $num * 1MB }
+                    "GB" { $minSize = $num * 1GB }
+                }
+            }
+        }
+    }
+
+    if (-not (Test-Path $targetPath)) {
+        Write-MoleError "Path does not exist: $targetPath"
+        return
+    }
+
+    Write-Host "$($script:PURPLE_BOLD)Duplicate File Finder$($script:NC)"
+    Write-Host "Scanning: $($script:CYAN)$targetPath$($script:NC)"
+    Write-Host "Minimum size: $(Format-ByteSize -Bytes $minSize)"
+    Write-Host ""
+
+    # Directories to skip
+    $skipDirs = @('Windows', 'Program Files', 'Program Files (x86)', '$Recycle.Bin',
+                  'System Volume Information', 'ProgramData', 'Recovery', 'PerfLogs',
+                  'AppData', 'node_modules', '.git', '.svn', 'vendor')
+
+    Write-Host "  Scanning for files..." -NoNewline
+
+    # First pass: group files by size (potential duplicates have same size)
+    $filesBySize = @{}
+    $scannedCount = 0
+
+    $allFiles = Get-ChildItem -Path $targetPath -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Length -ge $minSize -and
+            -not ($skipDirs | Where-Object { $_.FullName -like "*\$_\*" })
+        }
+
+    foreach ($file in $allFiles) {
+        $scannedCount++
+        if ($scannedCount % 500 -eq 0) {
+            Write-Host "`r  Scanned $scannedCount files..." -NoNewline
+        }
+
+        $size = $file.Length
+        if (-not $filesBySize.ContainsKey($size)) {
+            $filesBySize[$size] = @()
+        }
+        $filesBySize[$size] += $file
+    }
+
+    Write-Host "`r  Scanned $scannedCount files.                    "
+
+    # Second pass: hash files that share the same size
+    Write-Host "  Computing hashes for potential duplicates..." -NoNewline
+
+    $duplicates = @{}
+    $potentialDupes = $filesBySize.GetEnumerator() | Where-Object { $_.Value.Count -gt 1 }
+    $hashCount = 0
+
+    foreach ($sizeGroup in $potentialDupes) {
+        foreach ($file in $sizeGroup.Value) {
+            try {
+                $hashCount++
+                if ($hashCount % 50 -eq 0) {
+                    Write-Host "`r  Hashing file $hashCount..." -NoNewline
+                }
+
+                $hash = (Get-FileHash -Path $file.FullName -Algorithm MD5 -ErrorAction Stop).Hash
+                $key = "$hash-$($file.Length)"
+
+                if (-not $duplicates.ContainsKey($key)) {
+                    $duplicates[$key] = @()
+                }
+                $duplicates[$key] += $file
+            }
+            catch {
+                # Skip files that can't be read
+            }
+        }
+    }
+
+    Write-Host "`r  Hashed $hashCount files.                        "
+    Write-Host ""
+
+    # Filter to only actual duplicates (more than one file with same hash)
+    $actualDupes = $duplicates.GetEnumerator() | Where-Object { $_.Value.Count -gt 1 } | Sort-Object { -($_.Value[0].Length) }
+
+    if ($actualDupes.Count -eq 0) {
+        Write-Host "  $($script:GREEN)No duplicate files found!$($script:NC)"
+        return
+    }
+
+    # Calculate stats
+    $totalGroups = ($actualDupes | Measure-Object).Count
+    $totalDupeFiles = ($actualDupes | ForEach-Object { $_.Value.Count - 1 } | Measure-Object -Sum).Sum
+    $wastedSpace = ($actualDupes | ForEach-Object { ($_.Value.Count - 1) * $_.Value[0].Length } | Measure-Object -Sum).Sum
+
+    Write-Host "$($script:PURPLE_BOLD)Results$($script:NC)"
+    Write-Host ("-" * 50)
+    Write-Host "  Duplicate groups: $($script:YELLOW)$totalGroups$($script:NC)"
+    Write-Host "  Duplicate files:  $($script:YELLOW)$totalDupeFiles$($script:NC)"
+    Write-Host "  Wasted space:     $($script:RED)$(Format-ByteSize -Bytes $wastedSpace)$($script:NC)"
+    Write-Host ""
+
+    # Show top duplicate groups
+    Write-Host "$($script:PURPLE_BOLD)Largest Duplicates$($script:NC)"
+    $shown = 0
+    foreach ($group in $actualDupes) {
+        if ($shown -ge 10) {
+            $remaining = $totalGroups - 10
+            if ($remaining -gt 0) {
+                Write-Host "  $($script:GRAY)... and $remaining more duplicate groups$($script:NC)"
+            }
+            break
+        }
+
+        $files = $group.Value
+        $size = $files[0].Length
+        $count = $files.Count
+        $waste = $size * ($count - 1)
+
+        Write-Host ""
+        Write-Host "  $($script:CYAN)$(Format-ByteSize -Bytes $size)$($script:NC) x $count copies (wastes $(Format-ByteSize -Bytes $waste))"
+
+        foreach ($file in $files | Select-Object -First 3) {
+            $path = $file.FullName
+            if ($path.Length -gt 70) {
+                $path = "..." + $path.Substring($path.Length - 67)
+            }
+            Write-Host "    $path"
+        }
+        if ($files.Count -gt 3) {
+            Write-Host "    $($script:GRAY)... and $($files.Count - 3) more$($script:NC)"
+        }
+
+        $shown++
+    }
+
+    Write-Host ""
+    Write-Host ("-" * 50)
+    Write-Host "To delete duplicates, manually review and remove unwanted copies."
+    Write-Host "Consider using: $($script:CYAN)mole dupes $targetPath --min 10MB$($script:NC) for larger files only"
+}
+
+# ============================================================================
+# Large File Finder Command
+# ============================================================================
+function Invoke-LargeCommand {
+    Write-MoleBanner
+
+    # Parse arguments
+    $targetPath = if ($RemainingArgs.Count -gt 0) { $RemainingArgs[0] } else { "C:\" }
+
+    # Handle drive letter format
+    if ($targetPath -match "^[A-Za-z]:?$") {
+        $targetPath = $targetPath.TrimEnd(':') + ":\"
+    }
+
+    # Parse --min size argument (default 100MB)
+    $minSize = 100MB
+    for ($i = 0; $i -lt $RemainingArgs.Count; $i++) {
+        if ($RemainingArgs[$i] -eq "--min" -and $i + 1 -lt $RemainingArgs.Count) {
+            $sizeStr = $RemainingArgs[$i + 1]
+            if ($sizeStr -match "^(\d+)(KB|MB|GB)$") {
+                $num = [int]$Matches[1]
+                switch ($Matches[2]) {
+                    "KB" { $minSize = $num * 1KB }
+                    "MB" { $minSize = $num * 1MB }
+                    "GB" { $minSize = $num * 1GB }
+                }
+            }
+        }
+    }
+
+    if (-not (Test-Path $targetPath)) {
+        Write-MoleError "Path does not exist: $targetPath"
+        return
+    }
+
+    Write-Host "$($script:PURPLE_BOLD)Large File Finder$($script:NC)"
+    Write-Host "Scanning: $($script:CYAN)$targetPath$($script:NC)"
+    Write-Host "Minimum size: $(Format-ByteSize -Bytes $minSize)"
+    Write-Host ""
+
+    # Directories to skip
+    $skipDirs = @('Windows', '$Recycle.Bin', 'System Volume Information', 'Recovery')
+
+    Write-Host "  Scanning for large files..." -NoNewline
+
+    $largeFiles = @()
+    $scannedCount = 0
+
+    # Scan for large files
+    $allFiles = Get-ChildItem -Path $targetPath -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Length -ge $minSize }
+
+    foreach ($file in $allFiles) {
+        $scannedCount++
+        if ($scannedCount % 100 -eq 0) {
+            Write-Host "`r  Found $scannedCount large files..." -NoNewline
+        }
+
+        # Skip system directories
+        $skip = $false
+        foreach ($dir in $skipDirs) {
+            if ($file.FullName -like "*\$dir\*") {
+                $skip = $true
+                break
+            }
+        }
+
+        if (-not $skip) {
+            $largeFiles += [PSCustomObject]@{
+                Path = $file.FullName
+                Size = $file.Length
+                LastAccessed = $file.LastAccessTime
+                LastModified = $file.LastWriteTime
+                Extension = $file.Extension.ToLower()
+            }
+        }
+    }
+
+    Write-Host "`r  Found $($largeFiles.Count) large files.                    "
+    Write-Host ""
+
+    if ($largeFiles.Count -eq 0) {
+        Write-Host "  $($script:GREEN)No files found larger than $(Format-ByteSize -Bytes $minSize)$($script:NC)"
+        return
+    }
+
+    # Sort by size descending
+    $largeFiles = $largeFiles | Sort-Object Size -Descending
+
+    # Calculate totals
+    $totalSize = ($largeFiles | Measure-Object -Property Size -Sum).Sum
+
+    Write-Host "$($script:PURPLE_BOLD)Results$($script:NC)"
+    Write-Host ("-" * 50)
+    Write-Host "  Files found: $($script:YELLOW)$($largeFiles.Count)$($script:NC)"
+    Write-Host "  Total size:  $($script:RED)$(Format-ByteSize -Bytes $totalSize)$($script:NC)"
+    Write-Host ""
+
+    # Group by extension
+    $byExtension = $largeFiles | Group-Object Extension | Sort-Object { ($_.Group | Measure-Object Size -Sum).Sum } -Descending | Select-Object -First 5
+
+    Write-Host "$($script:PURPLE_BOLD)By File Type$($script:NC)"
+    foreach ($ext in $byExtension) {
+        $extSize = ($ext.Group | Measure-Object Size -Sum).Sum
+        $extName = if ($ext.Name) { $ext.Name } else { "(no extension)" }
+        Write-Host "  $($extName.PadRight(12)) $($ext.Count.ToString().PadLeft(5)) files  $(Format-ByteSize -Bytes $extSize)"
+    }
+    Write-Host ""
+
+    # Show largest files
+    Write-Host "$($script:PURPLE_BOLD)Largest Files$($script:NC)"
+    $shown = 0
+    foreach ($file in $largeFiles) {
+        if ($shown -ge 20) {
+            $remaining = $largeFiles.Count - 20
+            if ($remaining -gt 0) {
+                Write-Host "  $($script:GRAY)... and $remaining more files$($script:NC)"
+            }
+            break
+        }
+
+        $path = $file.Path
+        $displayPath = $path
+        if ($displayPath.Length -gt 55) {
+            $displayPath = "..." + $displayPath.Substring($displayPath.Length - 52)
+        }
+
+        $sizeStr = (Format-ByteSize -Bytes $file.Size).PadLeft(10)
+
+        # Color code by size
+        if ($file.Size -ge 1GB) {
+            Write-Host "  $($script:RED)$sizeStr$($script:NC)  $displayPath"
+        }
+        elseif ($file.Size -ge 500MB) {
+            Write-Host "  $($script:YELLOW)$sizeStr$($script:NC)  $displayPath"
+        }
+        else {
+            Write-Host "  $($script:CYAN)$sizeStr$($script:NC)  $displayPath"
+        }
+
+        $shown++
+    }
+
+    # Show old/unused large files
+    $sixMonthsAgo = (Get-Date).AddMonths(-6)
+    $oldFiles = $largeFiles | Where-Object { $_.LastAccessed -lt $sixMonthsAgo } | Select-Object -First 10
+
+    if ($oldFiles.Count -gt 0) {
+        Write-Host ""
+        Write-Host "$($script:PURPLE_BOLD)Old Files (Not Accessed in 6+ Months)$($script:NC)"
+        $oldSize = ($oldFiles | Measure-Object Size -Sum).Sum
+        Write-Host "  Potential space to reclaim: $($script:GREEN)$(Format-ByteSize -Bytes $oldSize)$($script:NC)"
+        Write-Host ""
+
+        foreach ($file in $oldFiles | Select-Object -First 5) {
+            $path = $file.Path
+            if ($path.Length -gt 50) {
+                $path = "..." + $path.Substring($path.Length - 47)
+            }
+            $sizeStr = (Format-ByteSize -Bytes $file.Size).PadLeft(10)
+            $age = [math]::Floor(((Get-Date) - $file.LastAccessed).TotalDays)
+            Write-Host "  $sizeStr  $path  $($script:GRAY)($age days old)$($script:NC)"
+        }
+    }
+
+    Write-Host ""
+    Write-Host ("-" * 50)
+    Write-Host "Tips:"
+    Write-Host "  - Review video files (.mp4, .mkv) - often largest"
+    Write-Host "  - Check Downloads folder for forgotten installers"
+    Write-Host "  - VM disk images (.vdi, .vmdk, .vhdx) can be huge"
+    Write-Host "  - Use $($script:CYAN)mole large $targetPath --min 1GB$($script:NC) for biggest files only"
+}
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 function Main {
@@ -983,6 +1368,12 @@ function Main {
         }
         "media" {
             Invoke-MediaCommand
+        }
+        "dupes" {
+            Invoke-DupesCommand
+        }
+        "large" {
+            Invoke-LargeCommand
         }
         "help" {
             Show-Help
