@@ -11,7 +11,7 @@ jobs:
     name: Build Go Binaries
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -31,7 +31,7 @@ jobs:
     name: Test PowerShell
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Validate PowerShell syntax
         shell: pwsh
