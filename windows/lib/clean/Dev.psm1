@@ -202,6 +202,21 @@ function Clear-PythonCache {
         Invoke-SafeClean -Path "$anacondaCache\*" -Description "Anaconda packages cache"
     }
 
+    # Weights & Biases (wandb) cache
+    $wandbCache = Join-Path $env:USERPROFILE ".cache\wandb"
+    if (-not (Test-Path $wandbCache)) {
+        $wandbCache = Join-Path $env:LOCALAPPDATA "wandb\cache"
+    }
+    if (Test-Path $wandbCache) {
+        Invoke-SafeClean -Path "$wandbCache\*" -Description "Weights & Biases cache"
+    }
+
+    # Jupyter runtime cache
+    $jupyterRuntime = Join-Path $env:APPDATA "jupyter\runtime"
+    if (Test-Path $jupyterRuntime) {
+        Invoke-SafeClean -Path "$jupyterRuntime\*" -Description "Jupyter runtime cache"
+    }
+
     Stop-MoleSection
 }
 
@@ -456,6 +471,25 @@ function Clear-FrontendCache {
     }
     if (Test-Path $electronCache) {
         Invoke-SafeClean -Path "$electronCache\*" -Description "Electron cache"
+    }
+
+    # Puppeteer browser cache
+    $puppeteerCache = Join-Path $env:USERPROFILE ".cache\puppeteer"
+    if (-not (Test-Path $puppeteerCache)) {
+        $puppeteerCache = Join-Path $env:LOCALAPPDATA "puppeteer"
+    }
+    if (Test-Path $puppeteerCache) {
+        Invoke-SafeClean -Path "$puppeteerCache\*" -Description "Puppeteer browser cache"
+    }
+
+    # Playwright browsers cache
+    $playwrightCache = Join-Path $env:LOCALAPPDATA "ms-playwright"
+    if (Test-Path $playwrightCache) {
+        $size = Get-PathSize -Path $playwrightCache
+        if ($size -gt 100MB) {
+            Write-Host "  $($script:ICON_LIST) Playwright browsers: $(Format-ByteSize -Bytes $size)"
+            Write-Host "    $($script:GRAY)Clean with: npx playwright uninstall --all$($script:NC)"
+        }
     }
 
     Stop-MoleSection

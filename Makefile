@@ -1,4 +1,4 @@
-# Makefile for Mole
+# Makefile for Mole Windows
 
 .PHONY: all build clean release
 
@@ -18,23 +18,28 @@ LDFLAGS := -s -w
 
 all: build
 
-# Local build (current architecture)
+# Local build (Windows)
 build:
-	@echo "Building for local architecture..."
-	go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-go $(ANALYZE_SRC)
-	go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-go $(STATUS_SRC)
+	@echo "Building for Windows..."
+	go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE).exe $(ANALYZE_SRC)
+	go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS).exe $(STATUS_SRC)
 
-# Release build targets (run on native architectures for CGO support)
+# Release build for Windows amd64
 release-amd64:
-	@echo "Building release binaries (amd64)..."
-	GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-darwin-amd64 $(ANALYZE_SRC)
-	GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-darwin-amd64 $(STATUS_SRC)
+	@echo "Building Windows amd64 release..."
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-windows-amd64.exe $(ANALYZE_SRC)
+	GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-windows-amd64.exe $(STATUS_SRC)
 
+# Release build for Windows arm64
 release-arm64:
-	@echo "Building release binaries (arm64)..."
-	GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-darwin-arm64 $(ANALYZE_SRC)
-	GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-darwin-arm64 $(STATUS_SRC)
+	@echo "Building Windows arm64 release..."
+	GOOS=windows GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(ANALYZE)-windows-arm64.exe $(ANALYZE_SRC)
+	GOOS=windows GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BIN_DIR)/$(STATUS)-windows-arm64.exe $(STATUS_SRC)
+
+# Test
+test:
+	go test ./...
 
 clean:
 	@echo "Cleaning binaries..."
-	rm -f $(BIN_DIR)/$(ANALYZE)-* $(BIN_DIR)/$(STATUS)-* $(BIN_DIR)/$(ANALYZE)-go $(BIN_DIR)/$(STATUS)-go
+	rm -f $(BIN_DIR)/*.exe

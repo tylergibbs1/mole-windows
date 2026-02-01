@@ -1,0 +1,69 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-go:
+    name: Build Go Binaries
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build analyze
+        run: go build -ldflags="-s -w" -o bin/analyze.exe ./cmd/analyze
+
+      - name: Build status
+        run: go build -ldflags="-s -w" -o bin/status.exe ./cmd/status
+
+      - name: Run Go tests
+        run: go test ./...
+
+  test-powershell:
+    name: Test PowerShell
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Path windows -Filter "*.ps1" -Recurse | ForEach-Object {
+            try {
+              $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
+              Write-Host "OK: $($_.Name)"
+            } catch {
+              $errors += $_.FullName
+              Write-Host "FAIL: $($_.Name)"
+            }
+          }
+          Get-ChildItem -Path windows -Filter "*.psm1" -Recurse | ForEach-Object {
+            try {
+              $null = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$null, [ref]$null)
+              Write-Host "OK: $($_.Name)"
+            } catch {
+              $errors += $_.FullName
+              Write-Host "FAIL: $($_.Name)"
+            }
+          }
+          if ($errors.Count -gt 0) {
+            Write-Host "`nFailed files:"
+            $errors | ForEach-Object { Write-Host "  $_" }
+            exit 1
+          }
+          Write-Host "`nAll PowerShell files validated successfully"
+
+      - name: Test dry-run
+        shell: pwsh
+        run: |
+          Set-Location windows
+          .\mole.ps1 help
