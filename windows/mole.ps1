@@ -39,7 +39,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet("clean", "analyze", "status", "whitelist", "purge", "optimize", "help", "version", "")]
+    [ValidateSet("clean", "analyze", "status", "whitelist", "purge", "optimize", "media", "help", "version", "")]
     [string]$Command = "",
 
     [Alias("n")]
@@ -196,6 +196,7 @@ COMMANDS:
     whitelist       Manage protected paths
     purge           Clean project build artifacts
     optimize        Optimize system (cache rebuild, service refresh)
+    media           Find and transfer media files between drives
     help            Show this help message
     version         Show version information
 
@@ -210,6 +211,11 @@ CLEAN OPTIONS:
     -NoRecycleBin   Skip Recycle Bin cleanup
     -Drive X        Show free space for drive X (default: C)
 
+MEDIA OPTIONS:
+    mole media scan C:          Scan C: drive for media files
+    mole media transfer C: E:   Transfer media from C: to E:
+    mole media transfer C: E: -n  Preview transfer (dry-run)
+
 GLOBAL OPTIONS:
     -DebugMode, -d  Enable debug logging
 
@@ -220,6 +226,8 @@ EXAMPLES:
     mole clean -Admin           Full cleanup with admin rights
     mole clean -Drive C         Show C: drive free space
     mole whitelist              Manage whitelist interactively
+    mole media scan C:          Find all videos/images on C:
+    mole media transfer C: E:   Move media from C: to E:
 
 CONFIGURATION:
     Config directory: $env:LOCALAPPDATA\mole
@@ -593,6 +601,358 @@ function Invoke-OptimizeCommand {
 }
 
 # ============================================================================
+# Media Command - Find and Transfer Media Files
+# ============================================================================
+function Invoke-MediaCommand {
+    Write-MoleBanner
+
+    # Media file extensions
+    $imageExtensions = @('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic', '.heif',
+                         '.tiff', '.tif', '.raw', '.cr2', '.nef', '.arw', '.dng', '.svg', '.ico')
+    $videoExtensions = @('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v',
+                         '.mpeg', '.mpg', '.3gp', '.ts', '.mts', '.m2ts', '.vob')
+    $allMediaExtensions = $imageExtensions + $videoExtensions
+
+    # Parse subcommand
+    $subCommand = if ($RemainingArgs.Count -gt 0) { $RemainingArgs[0] } else { "" }
+
+    switch ($subCommand) {
+        "scan" {
+            # Scan drive for media files
+            $sourceDrive = if ($RemainingArgs.Count -gt 1) { $RemainingArgs[1].TrimEnd(':') } else { "C" }
+            $sourcePath = "${sourceDrive}:\"
+
+            if (-not (Test-Path $sourcePath)) {
+                Write-MoleError "Drive $sourceDrive`: does not exist"
+                return
+            }
+
+            Write-Host "$($script:PURPLE_BOLD)Media Scanner$($script:NC)"
+            Write-Host "Scanning $($script:CYAN)$sourceDrive`:$($script:NC) for images and videos..."
+            Write-Host ""
+
+            # Directories to skip
+            $skipDirs = @('Windows', 'Program Files', 'Program Files (x86)', '$Recycle.Bin',
+                          'System Volume Information', 'ProgramData', 'Recovery', 'PerfLogs')
+
+            $mediaFiles = @{
+                Images = @()
+                Videos = @()
+            }
+            $totalSize = @{ Images = 0; Videos = 0 }
+            $scannedDirs = 0
+
+            # Get top-level directories
+            $topDirs = Get-ChildItem -Path $sourcePath -Directory -Force -ErrorAction SilentlyContinue |
+                Where-Object { $skipDirs -notcontains $_.Name }
+
+            Write-Host "  Scanning directories..." -NoNewline
+
+            foreach ($topDir in $topDirs) {
+                $scannedDirs++
+                Write-Host "`r  Scanning: $($topDir.Name.PadRight(40))" -NoNewline
+
+                try {
+                    $files = Get-ChildItem -Path $topDir.FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
+                        Where-Object { $allMediaExtensions -contains $_.Extension.ToLower() }
+
+                    foreach ($file in $files) {
+                        $ext = $file.Extension.ToLower()
+                        if ($imageExtensions -contains $ext) {
+                            $mediaFiles.Images += $file
+                            $totalSize.Images += $file.Length
+                        }
+                        elseif ($videoExtensions -contains $ext) {
+                            $mediaFiles.Videos += $file
+                            $totalSize.Videos += $file.Length
+                        }
+                    }
+                }
+                catch {
+                    # Skip inaccessible directories
+                }
+            }
+
+            Write-Host "`r" + (" " * 60) + "`r"  # Clear line
+            Write-Host ""
+            Write-Host "$($script:PURPLE_BOLD)Scan Results$($script:NC)"
+            Write-Host ("-" * 50)
+            Write-Host ""
+            Write-Host "  $($script:ICON_SUCCESS) Images: $($script:GREEN)$($mediaFiles.Images.Count)$($script:NC) files ($($script:CYAN)$(Format-ByteSize -Bytes $totalSize.Images)$($script:NC))"
+            Write-Host "  $($script:ICON_SUCCESS) Videos: $($script:GREEN)$($mediaFiles.Videos.Count)$($script:NC) files ($($script:CYAN)$(Format-ByteSize -Bytes $totalSize.Videos)$($script:NC))"
+            Write-Host ""
+            $grandTotal = $totalSize.Images + $totalSize.Videos
+            Write-Host "  Total: $($script:YELLOW)$(Format-ByteSize -Bytes $grandTotal)$($script:NC)"
+            Write-Host ""
+
+            # Show largest files
+            if ($mediaFiles.Videos.Count -gt 0) {
+                Write-Host "$($script:PURPLE_BOLD)Largest Videos$($script:NC)"
+                $mediaFiles.Videos | Sort-Object Length -Descending | Select-Object -First 10 | ForEach-Object {
+                    $relativePath = $_.FullName.Substring(3)  # Remove drive letter
+                    if ($relativePath.Length -gt 60) {
+                        $relativePath = "..." + $relativePath.Substring($relativePath.Length - 57)
+                    }
+                    Write-Host "  $(Format-ByteSize -Bytes $_.Length) - $relativePath"
+                }
+                Write-Host ""
+            }
+
+            Write-Host "To transfer media to another drive, run:"
+            Write-Host "  $($script:CYAN)mole media transfer $sourceDrive`: <destination-drive>:$($script:NC)"
+        }
+
+        "transfer" {
+            # Transfer media from source to destination
+            $sourceDrive = if ($RemainingArgs.Count -gt 1) { $RemainingArgs[1].TrimEnd(':').ToUpper() } else { "" }
+            $destDrive = if ($RemainingArgs.Count -gt 2) { $RemainingArgs[2].TrimEnd(':').ToUpper() } else { "" }
+
+            if ([string]::IsNullOrEmpty($sourceDrive) -or [string]::IsNullOrEmpty($destDrive)) {
+                Write-MoleError "Usage: mole media transfer <source-drive>: <dest-drive>:"
+                Write-Host "Example: mole media transfer C: E:"
+                return
+            }
+
+            $sourcePath = "${sourceDrive}:\"
+            $destPath = "${destDrive}:\Media"
+
+            if (-not (Test-Path $sourcePath)) {
+                Write-MoleError "Source drive $sourceDrive`: does not exist"
+                return
+            }
+            if (-not (Test-Path "${destDrive}:\")) {
+                Write-MoleError "Destination drive $destDrive`: does not exist"
+                return
+            }
+
+            Write-Host "$($script:PURPLE_BOLD)Media Transfer$($script:NC)"
+            Write-Host "From: $($script:CYAN)$sourceDrive`:$($script:NC) -> To: $($script:GREEN)$destPath$($script:NC)"
+            if ($DryRun) {
+                Write-Host "$($script:YELLOW)(DRY RUN - no files will be moved)$($script:NC)"
+            }
+            Write-Host ""
+
+            # Directories to skip
+            $skipDirs = @('Windows', 'Program Files', 'Program Files (x86)', '$Recycle.Bin',
+                          'System Volume Information', 'ProgramData', 'Recovery', 'PerfLogs',
+                          'AppData', 'Application Data', 'Local Settings')
+
+            # Also skip the destination if it's on the same drive
+            if ($sourceDrive -eq $destDrive) {
+                $skipDirs += 'Media'
+            }
+
+            Write-Host "  Scanning for media files..." -NoNewline
+
+            $mediaFiles = @()
+            $topDirs = Get-ChildItem -Path $sourcePath -Directory -Force -ErrorAction SilentlyContinue |
+                Where-Object { $skipDirs -notcontains $_.Name }
+
+            foreach ($topDir in $topDirs) {
+                Write-Host "`r  Scanning: $($topDir.Name.PadRight(40))" -NoNewline
+
+                try {
+                    $files = Get-ChildItem -Path $topDir.FullName -Recurse -File -Force -ErrorAction SilentlyContinue |
+                        Where-Object { $allMediaExtensions -contains $_.Extension.ToLower() }
+                    $mediaFiles += $files
+                }
+                catch {
+                    # Skip inaccessible directories
+                }
+            }
+
+            # Also check Users folder specifically for common media locations
+            $usersPath = "${sourceDrive}:\Users"
+            if (Test-Path $usersPath) {
+                $userDirs = Get-ChildItem -Path $usersPath -Directory -Force -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -ne 'Default' -and $_.Name -ne 'Public' -and $_.Name -ne 'Default User' }
+
+                foreach ($userDir in $userDirs) {
+                    $mediaLocations = @('Pictures', 'Videos', 'Downloads', 'Desktop', 'Documents',
+                                        'OneDrive\Pictures', 'OneDrive\Videos')
+
+                    foreach ($loc in $mediaLocations) {
+                        $locPath = Join-Path $userDir.FullName $loc
+                        if (Test-Path $locPath) {
+                            Write-Host "`r  Scanning: Users\$($userDir.Name)\$loc".PadRight(50) -NoNewline
+                            try {
+                                $files = Get-ChildItem -Path $locPath -Recurse -File -Force -ErrorAction SilentlyContinue |
+                                    Where-Object { $allMediaExtensions -contains $_.Extension.ToLower() }
+                                $mediaFiles += $files
+                            }
+                            catch { }
+                        }
+                    }
+                }
+            }
+
+            Write-Host "`r" + (" " * 60) + "`r"
+
+            # Remove duplicates
+            $mediaFiles = $mediaFiles | Select-Object -Unique
+
+            if ($mediaFiles.Count -eq 0) {
+                Write-Host "  No media files found."
+                return
+            }
+
+            $totalSize = ($mediaFiles | Measure-Object -Property Length -Sum).Sum
+            $imageCount = ($mediaFiles | Where-Object { $imageExtensions -contains $_.Extension.ToLower() }).Count
+            $videoCount = ($mediaFiles | Where-Object { $videoExtensions -contains $_.Extension.ToLower() }).Count
+
+            Write-Host ""
+            Write-Host "  Found: $($script:GREEN)$($mediaFiles.Count)$($script:NC) files ($(Format-ByteSize -Bytes $totalSize))"
+            Write-Host "         $imageCount images, $videoCount videos"
+            Write-Host ""
+
+            # Check destination space
+            $destDriveInfo = Get-PSDrive -Name $destDrive -ErrorAction SilentlyContinue
+            if ($destDriveInfo) {
+                $freeSpace = $destDriveInfo.Free
+                if ($freeSpace -lt $totalSize) {
+                    Write-MoleError "Not enough space on $destDrive`: ($(Format-ByteSize -Bytes $freeSpace) free, need $(Format-ByteSize -Bytes $totalSize))"
+                    return
+                }
+                Write-Host "  Destination has $(Format-ByteSize -Bytes $freeSpace) free"
+            }
+
+            if (-not $DryRun -and -not $Yes) {
+                Write-Host ""
+                $response = Read-Host "Transfer $($mediaFiles.Count) files to $destPath`? [y/N]"
+                if ($response -ne 'y' -and $response -ne 'Y') {
+                    Write-Host "Cancelled."
+                    return
+                }
+            }
+
+            # Create destination structure
+            $destImages = Join-Path $destPath "Images"
+            $destVideos = Join-Path $destPath "Videos"
+
+            if (-not $DryRun) {
+                New-Item -Path $destImages -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+                New-Item -Path $destVideos -ItemType Directory -Force -ErrorAction SilentlyContinue | Out-Null
+            }
+
+            Write-Host ""
+            Write-Host "  Transferring files..."
+
+            $movedCount = 0
+            $movedSize = 0
+            $errorCount = 0
+
+            foreach ($file in $mediaFiles) {
+                $ext = $file.Extension.ToLower()
+
+                # Determine destination folder
+                if ($imageExtensions -contains $ext) {
+                    $destFolder = $destImages
+                }
+                else {
+                    $destFolder = $destVideos
+                }
+
+                # Create year/month subfolder based on file date
+                $fileDate = $file.LastWriteTime
+                $yearMonth = $fileDate.ToString("yyyy\\MM")
+                $finalDest = Join-Path $destFolder $yearMonth
+                $destFile = Join-Path $finalDest $file.Name
+
+                # Handle duplicate filenames
+                $counter = 1
+                while (Test-Path $destFile) {
+                    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
+                    $extension = $file.Extension
+                    $destFile = Join-Path $finalDest "$baseName`_$counter$extension"
+                    $counter++
+                }
+
+                if ($DryRun) {
+                    $relativeDest = $destFile.Substring(3)  # Remove drive letter
+                    if ($movedCount -lt 20) {
+                        Write-Host "    $($script:GRAY)Would move:$($script:NC) $($file.Name) -> $yearMonth\"
+                    }
+                    elseif ($movedCount -eq 20) {
+                        Write-Host "    $($script:GRAY)... and more$($script:NC)"
+                    }
+                    $movedCount++
+                    $movedSize += $file.Length
+                }
+                else {
+                    try {
+                        # Create destination folder
+                        if (-not (Test-Path $finalDest)) {
+                            New-Item -Path $finalDest -ItemType Directory -Force | Out-Null
+                        }
+
+                        # Move file
+                        Move-Item -Path $file.FullName -Destination $destFile -Force -ErrorAction Stop
+                        $movedCount++
+                        $movedSize += $file.Length
+
+                        # Progress update every 50 files
+                        if ($movedCount % 50 -eq 0) {
+                            $pct = [math]::Round(($movedCount / $mediaFiles.Count) * 100)
+                            Write-Host "`r    Progress: $movedCount / $($mediaFiles.Count) ($pct%)" -NoNewline
+                        }
+                    }
+                    catch {
+                        $errorCount++
+                        Write-MoleDebug "Failed to move $($file.Name): $($_.Exception.Message)"
+                    }
+                }
+            }
+
+            Write-Host "`r" + (" " * 60) + "`r"
+            Write-Host ""
+            Write-Host ("-" * 50)
+
+            if ($DryRun) {
+                Write-Host "$($script:YELLOW)DRY RUN COMPLETE$($script:NC)"
+                Write-Host "  Would transfer: $movedCount files ($(Format-ByteSize -Bytes $movedSize))"
+                Write-Host ""
+                Write-Host "To actually transfer, run without -n flag:"
+                Write-Host "  $($script:CYAN)mole media transfer $sourceDrive`: $destDrive`:$($script:NC)"
+            }
+            else {
+                Write-Host "$($script:GREEN)TRANSFER COMPLETE$($script:NC)"
+                Write-Host "  Transferred: $movedCount files ($(Format-ByteSize -Bytes $movedSize))"
+                if ($errorCount -gt 0) {
+                    Write-Host "  $($script:YELLOW)Errors: $errorCount files could not be moved$($script:NC)"
+                }
+                Write-Host "  Destination: $destPath"
+                Write-Host "    - Images organized in: $destImages\<year>\<month>\"
+                Write-Host "    - Videos organized in: $destVideos\<year>\<month>\"
+            }
+        }
+
+        default {
+            Write-Host "$($script:PURPLE_BOLD)Media Manager$($script:NC)"
+            Write-Host "Find and transfer images and videos between drives"
+            Write-Host ""
+            Write-Host "USAGE:"
+            Write-Host "  mole media scan <drive>:          Scan drive for media files"
+            Write-Host "  mole media transfer <src>: <dst>: Transfer media between drives"
+            Write-Host ""
+            Write-Host "OPTIONS:"
+            Write-Host "  -n, -DryRun    Preview transfer without moving files"
+            Write-Host "  -Yes           Skip confirmation prompt"
+            Write-Host ""
+            Write-Host "EXAMPLES:"
+            Write-Host "  mole media scan C:              Find all media on C: drive"
+            Write-Host "  mole media transfer C: E:       Move media from C: to E:\Media"
+            Write-Host "  mole media transfer C: E: -n    Preview what would be moved"
+            Write-Host ""
+            Write-Host "SUPPORTED FORMATS:"
+            Write-Host "  Images: jpg, jpeg, png, gif, bmp, webp, heic, tiff, raw, cr2, nef, arw, dng"
+            Write-Host "  Videos: mp4, mkv, avi, mov, wmv, flv, webm, m4v, mpeg, mpg, 3gp, ts, mts"
+            Write-Host ""
+            Write-Host "Files are organized by date: <dest>\Images\<year>\<month>\"
+        }
+    }
+}
+
+# ============================================================================
 # Main Entry Point
 # ============================================================================
 function Main {
@@ -620,6 +980,9 @@ function Main {
         }
         "optimize" {
             Invoke-OptimizeCommand
+        }
+        "media" {
+            Invoke-MediaCommand
         }
         "help" {
             Show-Help
