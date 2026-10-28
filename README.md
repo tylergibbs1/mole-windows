@@ -4,31 +4,24 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/Tylerbryy/mole-windows/stargazers"><img src="https://img.shields.io/github/stars/Tylerbryy/mole-windows?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/Tylerbryy/mole-windows/releases"><img src="https://img.shields.io/github/v/tag/Tylerbryy/mole-windows?label=version&style=flat-square" alt="Version"></a>
+  <a href="https://github.com/tylergibbs1/mole-windows/stargazers"><img src="https://img.shields.io/github/stars/tylergibbs1/mole-windows?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/tylergibbs1/mole-windows/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/tylergibbs1/mole-windows/build.yml?branch=main&style=flat-square&label=build" alt="Build"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
 </p>
 
-## Features
-
-- **Deep cleaning**: Scans and removes caches, temp files, and browser leftovers to **reclaim gigabytes of space**
-- **Developer tools**: Cleans npm, pip, cargo, go, gradle, yarn, bun, conda, poetry, and more
-- **Browser cleanup**: Chrome, Edge, Firefox, and Brave cache cleanup
-- **Windows-specific**: Prefetch, font cache, Windows Error Reports, DNS cache, thumbnail cache
-- **Safe by design**: 4-layer path validation, dry-run mode, whitelist system
+Windows port of [Mole](https://github.com/tw93/Mole) by [Tw93](https://github.com/tw93).
 
 ## Quick Start
 
-**Install via PowerShell:**
+Clone and preview a cleanup in PowerShell:
 
 ```powershell
-# Clone and run
-git clone https://github.com/Tylerbryy/mole-windows.git
+git clone https://github.com/tylergibbs1/mole-windows.git
 cd mole-windows/windows
-.\mole.ps1 clean --dry-run  # Preview first
+.\mole.ps1 clean -DryRun  # Preview first
 ```
 
-**Or install to PATH:**
+Or install to PATH:
 
 ```powershell
 cd mole-windows/windows
@@ -37,19 +30,37 @@ cd mole-windows/windows
 mole clean
 ```
 
+Requires Windows 10/11 and PowerShell 5.1 or later. Administrator privileges are needed for full system cleanup.
+
+## Features
+
+- **Deep cleaning**: Scans and removes caches, temp files, and browser leftovers to **reclaim gigabytes of space**
+- **Developer tools**: Cleans npm, pip, cargo, go, gradle, yarn, bun, conda, poetry, and more
+- **Browser cleanup**: Chrome, Edge, Firefox, and Brave cache cleanup
+- **Windows-specific**: Prefetch, font cache, Windows Error Reports, DNS cache, thumbnail cache
+- **Disk tools**: a visual disk explorer and live system health dashboard (Go TUIs), plus duplicate, large-file, and media finders
+- **Safe by design**: 4-layer path validation, dry-run mode, whitelist system
+
 ## Usage
 
 ```powershell
 mole                         # Show help
 mole clean                   # Deep cleanup
-mole clean --dry-run         # Preview what would be cleaned
-mole clean --admin           # Run as admin for full cleanup
+mole clean -DryRun           # Preview what would be cleaned (alias: -n)
+mole clean -Quick            # Temp, browser, and Recycle Bin only (alias: -q)
+mole clean -Select           # Pick items to clean interactively (alias: -s)
+mole clean -Admin            # Run as admin for full cleanup
 mole clean -Drive D          # Show free space for D: drive
 
 mole analyze                 # Visual disk explorer (Go TUI)
 mole status                  # Live system health dashboard (Go TUI)
 mole purge                   # Clean project build artifacts
 mole optimize                # Refresh caches & services
+
+mole dupes C:                # Find duplicate files (--min 10MB to filter)
+mole large C:                # Find files over 100MB (--min 1GB to change)
+mole media scan C:           # Find videos and images
+mole media transfer C: E:    # Move media between drives (-n to preview)
 
 mole whitelist show          # View protected paths
 mole whitelist add <path>    # Protect a path from cleanup
@@ -58,6 +69,8 @@ mole whitelist remove <path> # Remove path from whitelist
 mole version                 # Show version
 mole help                    # Show help
 ```
+
+Other `clean` options: `-Yes` skips confirmation prompts; `-NoBrowser`, `-NoDev`, and `-NoRecycleBin` skip those categories.
 
 ## What Gets Cleaned
 
@@ -113,33 +126,36 @@ Mole uses the same 4-layer protection as the macOS version:
 3. **BOM whitelist**: User-configurable protected paths
 4. **Pattern matching**: 500+ protected app data patterns
 
-Preview any cleanup with `--dry-run`:
+Preview any cleanup with `-DryRun`:
 
 ```powershell
-mole clean --dry-run
+mole clean -DryRun
 ```
 
-## Debug Mode
+## Configuration and Debugging
 
-For detailed logs:
+Config lives in `%LOCALAPPDATA%\mole`, including the `whitelist` file and `mole.log`.
+
+For detailed logs, pass `-DebugMode` (alias `-d`) or set the environment variable:
 
 ```powershell
 $env:MOLE_DEBUG = "1"
-mole clean --dry-run
+mole clean -DryRun
 ```
 
 Debug log saved to: `%LOCALAPPDATA%\mole\mole_debug_session.log`
 
-## Requirements
+## Development
 
-- Windows 10/11
-- PowerShell 5.1 or later
-- Administrator privileges for full system cleanup
+The `analyze` and `status` TUIs are Go programs in `cmd/`:
 
-## Credits
+```bash
+make build      # builds bin/analyze.exe and bin/status.exe
+go test ./...
+```
 
-Windows port of [Mole](https://github.com/tw93/Mole) by [Tw93](https://github.com/tw93).
+CI (`.github/workflows/build.yml`) builds both binaries and runs the Go tests on Windows.
 
 ## License
 
-MIT License
+[MIT](LICENSE)
